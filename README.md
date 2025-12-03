@@ -14,6 +14,7 @@ A Next.js application for generating Business Requirements Documents (BRD) with 
 - 📄 PDF download functionality
 - 🎯 Sprint Planner with team capacity and velocity tracking
 - 📋 Story grouping (epics) and sprint breakdown visualization
+- 🔗 Jira integration - Create stories and epics directly in Jira Cloud
 
 ## Setup
 
@@ -31,6 +32,14 @@ Create a `.env.local` file in the root directory:
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 PERPLEXITY_API_KEY=your_perplexity_api_key
+
+# Jira Configuration
+JIRA_BASE_URL=https://your-domain.atlassian.net
+JIRA_API_TOKEN=your_jira_api_token
+
+# Optional: Custom Jira Field IDs (if different from defaults)
+# JIRA_STORY_POINTS_FIELD_ID=customfield_10016
+# JIRA_EPIC_LINK_FIELD_ID=customfield_10014
 ```
 
 **Getting Perplexity API Key:**
@@ -88,6 +97,8 @@ yanthrapm/
 │   │   │   └── route.ts      # API endpoint for BRD generation
 │   │   ├── generate-sprint-plan/
 │   │   │   └── route.ts      # API endpoint for sprint plan generation
+│   │   ├── create-jira-tickets/
+│   │   │   └── route.ts      # API endpoint for creating Jira tickets
 │   │   └── update-brd/
 │   │       └── route.ts      # API endpoint for updating BRD
 │   ├── globals.css           # Global styles with Tailwind
@@ -102,7 +113,8 @@ yanthrapm/
 ├── lib/
 │   ├── supabase.ts           # Supabase client configuration
 │   ├── fileParsers.ts        # CSV and Excel file parsing utilities
-│   └── perplexity.ts         # Perplexity AI integration
+│   ├── perplexity.ts          # Perplexity AI integration
+│   └── jira.ts               # Jira Cloud API integration
 └── package.json
 ```
 
@@ -122,6 +134,39 @@ The integration is handled in `/lib/perplexity.ts`. You can customize the prompt
 To customize the AI behavior, edit the prompts in `/lib/perplexity.ts`:
 - `generateBRDWithPerplexity()` - Modify the system and user prompts for BRD generation
 - `generateSprintPlanWithPerplexity()` - Modify the prompts for sprint planning
+
+### Jira Integration
+
+The application includes Jira Cloud integration to create stories and epics directly from sprint plans.
+
+**Setup:**
+1. Add Jira configuration to your `.env.local` file:
+   ```env
+   JIRA_BASE_URL=https://your-domain.atlassian.net
+   JIRA_API_TOKEN=your_jira_api_token
+   ```
+
+2. Get your Jira API token from [Atlassian Account Settings](https://id.atlassian.com/manage-profile/security/api-tokens)
+
+3. When creating Jira stories, you'll be prompted to enter:
+   - Your email address (for authentication)
+   - Project Key (e.g., `PROJ`)
+
+**Custom Field IDs:**
+Jira custom field IDs vary by instance. If story points or epic links don't work, you can configure custom field IDs via environment variables:
+- `JIRA_STORY_POINTS_FIELD_ID` - Default: `customfield_10016`
+- `JIRA_EPIC_LINK_FIELD_ID` - Default: `customfield_10014`
+
+To find your field IDs, use the Jira REST API:
+```bash
+curl -u email:api_token https://your-domain.atlassian.net/rest/api/3/field
+```
+
+**Features:**
+- Automatically creates epics if they don't exist
+- Creates stories with proper epic linking
+- Assigns story points to each story
+- Returns success/error logs for each story created
 
 ### User Authentication
 
