@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'BRD Generator',
-  description: 'Generate Business Requirements Documents',
+  title: 'AI Tools Dashboard',
+  description: 'AI-powered tools for Business Requirements, Sprint Planning, UAT, and Support Documentation',
 }
 
 export default function RootLayout({
@@ -17,6 +17,3 @@ export default function RootLayout({
     </html>
   )
 }
-
-
-
