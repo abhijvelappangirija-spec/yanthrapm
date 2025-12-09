@@ -4,7 +4,7 @@ import { generateBRDWithPerplexity } from '@/lib/perplexity'
 
 export async function POST(request: NextRequest) {
   try {
-    const { content, userId } = await request.json()
+    const { content, userId, useDummyData } = await request.json()
 
     if (!content) {
       return NextResponse.json(
@@ -13,8 +13,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate BRD using Perplexity AI
-    const brdText = await generateBRDWithPerplexity(content)
+    // Generate BRD using Perplexity AI or dummy data
+    let brdText: string
+    if (useDummyData) {
+      const { generateDummyBRD } = await import('@/lib/perplexity')
+      brdText = generateDummyBRD(content)
+      console.log('Using dummy BRD data for testing')
+    } else {
+      brdText = await generateBRDWithPerplexity(content)
+    }
 
     // Store in Supabase
     const { data, error } = await supabase

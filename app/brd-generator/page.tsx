@@ -14,6 +14,7 @@ export default function BRDGeneratorPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [brdId, setBrdId] = useState<string | null>(null)
+  const [useDummyData, setUseDummyData] = useState(false)
 
   const handleFileSelect = (content: string) => {
     setInputContent(content)
@@ -41,6 +42,7 @@ export default function BRDGeneratorPage() {
         body: JSON.stringify({
           content: inputContent,
           userId: 'user-123', // Replace with actual user ID from auth
+          useDummyData,
         }),
       })
 
@@ -142,6 +144,19 @@ export default function BRDGeneratorPage() {
               </div>
             )}
 
+            <div className="flex items-center space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <input
+                type="checkbox"
+                id="useDummyData"
+                checked={useDummyData}
+                onChange={(e) => setUseDummyData(e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="useDummyData" className="text-sm text-gray-700 cursor-pointer">
+                Use dummy data for testing (saves Perplexity API tokens)
+              </label>
+            </div>
+
             <button
               onClick={handleGenerateBRD}
               disabled={isLoading || !inputContent.trim()}
@@ -155,9 +170,16 @@ export default function BRDGeneratorPage() {
         ) : (
           <div className="bg-white rounded-lg shadow-lg p-6 space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-semibold text-gray-700">
-                Generated BRD
-              </h2>
+              <div>
+                <h2 className="text-2xl font-semibold text-gray-700">
+                  Generated BRD
+                </h2>
+                {useDummyData && (
+                  <p className="text-sm text-yellow-600 mt-1">
+                    ⚠️ Using dummy data for testing
+                  </p>
+                )}
+              </div>
               <button
                 onClick={handleDownloadPDF}
                 className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition-colors"
@@ -172,7 +194,7 @@ export default function BRDGeneratorPage() {
             />
 
             <div className="border-t pt-6">
-              <SprintPlanner brdText={brdContent} brdId={brdId} />
+              <SprintPlanner brdText={brdContent} brdId={brdId} useDummyData={useDummyData} />
             </div>
 
             <button
