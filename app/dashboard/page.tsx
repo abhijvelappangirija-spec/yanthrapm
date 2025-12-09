@@ -1,9 +1,11 @@
 'use client'
+import { useRouter } from 'next/navigation'
 
 import Link from 'next/link'
 import { useState } from 'react'
 
 export default function Dashboard() {
+  const router =  useRouter()
   const [userEmail] = useState('abhij.velappangirija@bounteous.com')
 
   const tools = [
@@ -62,10 +64,10 @@ export default function Dashboard() {
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="flex gap-8" aria-label="Tabs">
-            <button className="py-4 px-1 border-b-2 border-blue-500 font-medium text-sm text-gray-900">
+            <button onClick={() => router.push('/dashboard')} className="py-4 px-1 border-b-2 border-blue-500 font-medium text-sm text-gray-900">
               Dashboard
             </button>
-            <button className="py-4 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+            <button onClick={() => router.push('/history')} className="py-4 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
               History
             </button>
           </nav>
