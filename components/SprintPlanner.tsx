@@ -3,9 +3,109 @@
 import { useState } from 'react'
 import LoadingSpinner from './LoadingSpinner'
 
+/**
+ * Generate a detailed story description with acceptance criteria
+ */
+function generateStoryDescription(
+  storyTitle: string,
+  epicName: string,
+  storyPoints: number,
+  sprintPlan: SprintPlanResponse
+): string {
+  // Find which sprint this story belongs to
+  const sprintInfo = sprintPlan.sprintBreakdown.find(sprint =>
+    sprint.stories.includes(storyTitle)
+  )
+  
+  // Find the epic group to get more context
+  const epicGroup = sprintPlan.storyGroups.find(group => group.epic === epicName)
+  const totalEpicStories = epicGroup?.stories.length || 0
+  const totalEpicPoints = epicGroup?.storyPoints || 0
+  
+  const description = `h2. Story Overview
+
+${storyTitle}
+
+This user story is part of the *${epicName}* epic and contributes to delivering the overall functionality and business value outlined in the Business Requirements Document.
+
+h2. Story Details
+
+* *Epic Name:* ${epicName}
+* *Story Points:* ${storyPoints}
+* *Epic Total Stories:* ${totalEpicStories}
+* *Epic Total Points:* ${totalEpicPoints}
+${sprintInfo ? `* *Assigned Sprint:* Sprint ${sprintInfo.sprint}` : ''}
+${sprintInfo ? `* *Sprint Capacity:* ${sprintInfo.capacity} story points` : ''}
+${sprintInfo ? `* *Sprint Total Points:* ${sprintInfo.totalStoryPoints} story points` : ''}
+
+h2. Description
+
+As a user/developer/stakeholder, I need to ${storyTitle.toLowerCase()} so that I can achieve the goals outlined in the ${epicName} epic.
+
+This story addresses specific requirements from the Business Requirements Document and should be implemented following the project's technical standards and best practices.
+
+h2. Acceptance Criteria
+
+The following criteria must be met for this story to be considered complete:
+
+* The functionality described in the story title is fully implemented and working as expected
+* All related functional requirements from the Business Requirements Document are addressed
+* All related non-functional requirements (performance, security, scalability) are considered and met
+* Code follows project coding standards, conventions, and best practices
+* Unit tests are written with adequate coverage and all tests are passing
+* Integration tests are written and passing (if applicable)
+* API documentation is updated (if applicable)
+* User documentation is updated (if applicable)
+* Code review is completed and all feedback is addressed
+* The feature is tested in the appropriate environment (dev/staging)
+* No critical or high-severity bugs are introduced
+* The implementation aligns with the overall epic goals and architecture
+
+h2. Technical Requirements
+
+* Review the Business Requirements Document for detailed functional and non-functional requirements
+* Ensure alignment with the overall epic goals and architecture
+* Consider dependencies with other stories in the same epic or sprint
+* Follow the project's technical architecture and design patterns
+* Ensure proper error handling and logging
+* Consider security implications and follow security best practices
+* Ensure the implementation is scalable and maintainable
+
+h2. Dependencies
+
+* Review related stories in the same epic: ${epicName}
+${sprintInfo && sprintInfo.stories.length > 1 ? `* Coordinate with other stories in Sprint ${sprintInfo.sprint}` : ''}
+* Ensure no blocking dependencies before starting work
+
+h2. Definition of Done
+
+* [ ] Code implemented according to requirements
+* [ ] Code reviewed and approved by at least one team member
+* [ ] Unit tests written with adequate coverage (minimum 80%)
+* [ ] All unit tests passing
+* [ ] Integration tests written and passing (if applicable)
+* [ ] Code follows project standards and best practices
+* [ ] Documentation updated (code comments, API docs, user docs)
+* [ ] Feature tested in development environment
+* [ ] Feature tested in staging environment (if applicable)
+* [ ] No critical or high-severity bugs
+* [ ] Performance requirements met (if applicable)
+* [ ] Security requirements met (if applicable)
+* [ ] Ready for deployment to production
+
+h2. Notes
+
+* Refer to the Business Requirements Document for comprehensive details on functional and non-functional requirements
+* If clarification is needed, consult with the product owner or business analyst
+* Update this ticket with any blockers, questions, or additional context as work progresses`
+
+  return description
+}
+
 interface SprintPlannerProps {
   brdText: string
   brdId?: string | null
+  useDummyData?: boolean
 }
 
 interface StoryGroup {
@@ -28,7 +128,7 @@ interface SprintPlanResponse {
   sprintBreakdown: SprintBreakdown[]
 }
 
-export default function SprintPlanner({ brdText, brdId }: SprintPlannerProps) {
+export default function SprintPlanner({ brdText, brdId, useDummyData = false }: SprintPlannerProps) {
   const [teamMembers, setTeamMembers] = useState<number>(5)
   const [capacityPerMember, setCapacityPerMember] = useState<number>(8)
   const [sprintDuration, setSprintDuration] = useState<number>(2)
@@ -67,6 +167,7 @@ export default function SprintPlanner({ brdText, brdId }: SprintPlannerProps) {
           velocity: velocity || undefined,
           brdId: brdId || undefined,
           userId: 'user-123', // Replace with actual user ID from auth
+          useDummyData,
         }),
       })
 
@@ -404,9 +505,13 @@ export default function SprintPlanner({ brdText, brdId }: SprintPlannerProps) {
                       group.stories.forEach((story) => {
                         // Distribute story points evenly among stories in the epic
                         const pointsPerStory = Math.ceil(group.storyPoints / group.stories.length)
+                        
+                        // Generate detailed description with acceptance criteria
+                        const description = generateStoryDescription(story, group.epic, pointsPerStory, sprintPlan)
+                        
                         jiraStories.push({
                           title: story,
-                          description: `Story from epic: ${group.epic}\n\nPart of sprint plan with ${pointsPerStory} story points.`,
+                          description: description,
                           points: pointsPerStory,
                           epic: group.epic,
                         })
