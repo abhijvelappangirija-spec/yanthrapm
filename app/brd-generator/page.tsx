@@ -6,11 +6,16 @@ import FileUploadZone from '@/components/FileUploadZone'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import BRDViewer from '@/components/BRDViewer'
 import SprintPlanner from '@/components/SprintPlanner'
+import TechnicalContextForm from '@/components/TechnicalContextForm'
 import { generateBRDPDF } from '@/components/BRDPDF'
+
+type WorkflowStep = 'input' | 'brd' | 'technical-context' | 'sprint-plan'
 
 export default function BRDGeneratorPage() {
   const [inputContent, setInputContent] = useState('')
   const [brdContent, setBrdContent] = useState<string | null>(null)
+  const [technicalContext, setTechnicalContext] = useState<string>('')
+  const [currentStep, setCurrentStep] = useState<WorkflowStep>('input')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [brdId, setBrdId] = useState<string | null>(null)
@@ -54,11 +59,43 @@ export default function BRDGeneratorPage() {
 
       setBrdContent(data.brd)
       setBrdId(data.id)
+      setCurrentStep('technical-context')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleSaveTechnicalContext = async (context: string) => {
+    setTechnicalContext(context)
+    // Optionally save to database
+    if (brdId) {
+      try {
+        await fetch('/api/save-technical-context', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            brdId,
+            technicalContext: context,
+            userId: 'user-123',
+          }),
+        })
+      } catch (err) {
+        console.error('Error saving technical context:', err)
+      }
+    }
+  }
+
+  const handleProceedToSprintPlanning = (context: string) => {
+    setTechnicalContext(context)
+    setCurrentStep('sprint-plan')
+  }
+
+  const handleSkipTechnicalContext = () => {
+    setCurrentStep('sprint-plan')
   }
 
   const handleDownloadPDF = async () => {
@@ -193,21 +230,71 @@ export default function BRDGeneratorPage() {
               onContentChange={handleBRDContentChange}
             />
 
-            <div className="border-t pt-6">
-              <SprintPlanner brdText={brdContent} brdId={brdId} useDummyData={useDummyData} />
-            </div>
-
             <button
               onClick={() => {
                 setBrdContent(null)
                 setInputContent('')
+                setTechnicalContext('')
                 setBrdId(null)
                 setError(null)
+                setCurrentStep('input')
               }}
               className="w-full bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-gray-700 transition-colors"
             >
               Generate New BRD
             </button>
+          </div>
+        )}
+
+        {/* Workflow Progress Indicator */}
+        {brdContent && (
+          <div className="mt-6 mb-4">
+            <div className="flex items-center justify-center space-x-4">
+              <div className="flex items-center text-blue-600">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-600 text-white">
+                  ✓
+                </div>
+                <span className="ml-2 text-sm font-medium">BRD Generated</span>
+              </div>
+              <div className={`w-16 h-1 ${currentStep === 'technical-context' || currentStep === 'sprint-plan' ? 'bg-blue-600' : 'bg-gray-300'}`} />
+              <div className={`flex items-center ${currentStep === 'technical-context' || currentStep === 'sprint-plan' ? 'text-blue-600' : 'text-gray-400'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'technical-context' || currentStep === 'sprint-plan' ? 'bg-blue-600 text-white' : 'bg-gray-300'}`}>
+                  {currentStep === 'sprint-plan' ? '✓' : '2'}
+                </div>
+                <span className="ml-2 text-sm font-medium">Technical Context</span>
+              </div>
+              <div className={`w-16 h-1 ${currentStep === 'sprint-plan' ? 'bg-blue-600' : 'bg-gray-300'}`} />
+              <div className={`flex items-center ${currentStep === 'sprint-plan' ? 'text-blue-600' : 'text-gray-400'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'sprint-plan' ? 'bg-blue-600 text-white' : 'bg-gray-300'}`}>
+                  3
+                </div>
+                <span className="ml-2 text-sm font-medium">Sprint Plan</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Technical Context Step */}
+        {brdContent && currentStep === 'technical-context' && (
+          <div className="mt-6">
+            <TechnicalContextForm
+              initialValue={technicalContext}
+              onSave={handleSaveTechnicalContext}
+              onProceed={handleProceedToSprintPlanning}
+              onSkip={handleSkipTechnicalContext}
+            />
+          </div>
+        )}
+
+        {/* Sprint Planning Step */}
+        {brdContent && currentStep === 'sprint-plan' && (
+          <div className="mt-6">
+            <SprintPlanner
+              brdText={brdContent}
+              brdId={brdId}
+              technicalContext={technicalContext}
+              useDummyData={useDummyData}
+            />
           </div>
         )}
       </div>

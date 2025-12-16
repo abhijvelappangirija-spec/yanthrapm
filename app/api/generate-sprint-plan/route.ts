@@ -4,6 +4,7 @@ import { generateSprintPlanWithPerplexity } from '@/lib/perplexity'
 
 interface SprintPlanRequest {
   brdText: string
+  technicalContext?: string
   teamMembers: number
   capacityPerMember: number
   sprintDuration: number
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
   try {
     const {
       brdText,
+      technicalContext = '',
       teamMembers,
       capacityPerMember,
       sprintDuration,
@@ -74,6 +76,7 @@ export async function POST(request: NextRequest) {
     } else {
       sprintPlan = await generateSprintPlanWithPerplexity(
         brdText,
+        technicalContext,
         teamMembers,
         capacityPerMember,
         sprintDuration,

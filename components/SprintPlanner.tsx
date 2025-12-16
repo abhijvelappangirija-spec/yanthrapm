@@ -105,6 +105,7 @@ h2. Notes
 interface SprintPlannerProps {
   brdText: string
   brdId?: string | null
+  technicalContext?: string
   useDummyData?: boolean
 }
 
@@ -128,7 +129,7 @@ interface SprintPlanResponse {
   sprintBreakdown: SprintBreakdown[]
 }
 
-export default function SprintPlanner({ brdText, brdId, useDummyData = false }: SprintPlannerProps) {
+export default function SprintPlanner({ brdText, brdId, technicalContext = '', useDummyData = false }: SprintPlannerProps) {
   const [teamMembers, setTeamMembers] = useState<number>(5)
   const [capacityPerMember, setCapacityPerMember] = useState<number>(8)
   const [sprintDuration, setSprintDuration] = useState<number>(2)
@@ -161,6 +162,7 @@ export default function SprintPlanner({ brdText, brdId, useDummyData = false }: 
         },
         body: JSON.stringify({
           brdText,
+          technicalContext,
           teamMembers,
           capacityPerMember,
           sprintDuration,
