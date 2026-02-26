@@ -4,6 +4,7 @@ import { generateSprintPlanWithPerplexity } from '@/lib/perplexity'
 
 interface SprintPlanRequest {
   brdText: string
+  technicalContext?: string
   teamMembers: number
   capacityPerMember: number
   sprintDuration: number
@@ -11,6 +12,12 @@ interface SprintPlanRequest {
   brdId?: string
   userId?: string
   useDummyData?: boolean
+  resources?: Array<{
+    name: string
+    role: string
+    tech_stack?: string
+    capacity: number
+  }>
 }
 
 interface StoryGroup {
@@ -24,6 +31,12 @@ interface SprintBreakdown {
   stories: string[]
   totalStoryPoints: number
   capacity: number
+  qaTasks?: string[]
+  qaHours?: number
+  pmTasks?: string[]
+  pmHours?: number
+  architectTasks?: string[]
+  architectHours?: number
 }
 
 interface SprintPlanResponse {
@@ -37,6 +50,7 @@ export async function POST(request: NextRequest) {
   try {
     const {
       brdText,
+      technicalContext = '',
       teamMembers,
       capacityPerMember,
       sprintDuration,
@@ -44,6 +58,7 @@ export async function POST(request: NextRequest) {
       brdId,
       userId,
       useDummyData,
+      resources,
     }: SprintPlanRequest = await request.json()
 
     if (!brdText) {
@@ -74,10 +89,12 @@ export async function POST(request: NextRequest) {
     } else {
       sprintPlan = await generateSprintPlanWithPerplexity(
         brdText,
+        technicalContext,
         teamMembers,
         capacityPerMember,
         sprintDuration,
-        velocity
+        velocity,
+        resources
       )
     }
 

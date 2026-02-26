@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import LoadingSpinner from './LoadingSpinner'
 
 /**
@@ -102,10 +102,26 @@ h2. Notes
   return description
 }
 
+interface ProjectDefaults {
+  teamMembers: number
+  capacityPerMember: number
+  sprintDuration: number
+  techStack?: string
+  roles?: string[]
+  resources?: Array<{
+    id: string
+    name: string
+    tech_stack: string
+    capacity: number
+  }>
+}
+
 interface SprintPlannerProps {
   brdText: string
   brdId?: string | null
+  technicalContext?: string
   useDummyData?: boolean
+  projectDefaults?: ProjectDefaults
 }
 
 interface StoryGroup {
@@ -119,6 +135,12 @@ interface SprintBreakdown {
   stories: string[]
   totalStoryPoints: number
   capacity: number
+  qaTasks?: string[]
+  qaHours?: number
+  pmTasks?: string[]
+  pmHours?: number
+  architectTasks?: string[]
+  architectHours?: number
 }
 
 interface SprintPlanResponse {
@@ -128,11 +150,32 @@ interface SprintPlanResponse {
   sprintBreakdown: SprintBreakdown[]
 }
 
-export default function SprintPlanner({ brdText, brdId, useDummyData = false }: SprintPlannerProps) {
-  const [teamMembers, setTeamMembers] = useState<number>(5)
-  const [capacityPerMember, setCapacityPerMember] = useState<number>(8)
-  const [sprintDuration, setSprintDuration] = useState<number>(2)
+export default function SprintPlanner({
+  brdText,
+  brdId,
+  technicalContext = '',
+  useDummyData = false,
+  projectDefaults,
+}: SprintPlannerProps) {
+  const [teamMembers, setTeamMembers] = useState<number>(
+    projectDefaults?.teamMembers || 5
+  )
+  const [capacityPerMember, setCapacityPerMember] = useState<number>(
+    projectDefaults?.capacityPerMember || 8
+  )
+  const [sprintDuration, setSprintDuration] = useState<number>(
+    projectDefaults?.sprintDuration || 2
+  )
   const [velocity, setVelocity] = useState<number | null>(null)
+
+  // Update form when project defaults change
+  useEffect(() => {
+    if (projectDefaults) {
+      setTeamMembers(projectDefaults.teamMembers)
+      setCapacityPerMember(projectDefaults.capacityPerMember)
+      setSprintDuration(projectDefaults.sprintDuration)
+    }
+  }, [projectDefaults])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sprintPlan, setSprintPlan] = useState<SprintPlanResponse | null>(null)
@@ -161,6 +204,7 @@ export default function SprintPlanner({ brdText, brdId, useDummyData = false }: 
         },
         body: JSON.stringify({
           brdText,
+          technicalContext,
           teamMembers,
           capacityPerMember,
           sprintDuration,
@@ -168,6 +212,33 @@ export default function SprintPlanner({ brdText, brdId, useDummyData = false }: 
           brdId: brdId || undefined,
           userId: 'user-123', // Replace with actual user ID from auth
           useDummyData,
+          resources: projectDefaults?.resources?.map((r) => {
+            // Map tech_stack and name to role based on keywords
+            const techStack = (r.tech_stack || '').toLowerCase()
+            const name = (r.name || '').toLowerCase()
+            let role = 'Developer' // default
+            
+            // Check tech_stack first, then name
+            const combinedText = `${techStack} ${name}`
+            
+            if (combinedText.includes('qa') || combinedText.includes('test') || combinedText.includes('quality') || 
+                combinedText.includes('tester') || combinedText.includes('testing')) {
+              role = 'QA'
+            } else if (combinedText.includes('pm') || combinedText.includes('project manager') || 
+                       combinedText.includes('manager') || combinedText.includes('project management')) {
+              role = 'PM'
+            } else if (combinedText.includes('architect') || combinedText.includes('architecture') ||
+                       combinedText.includes('solution architect') || combinedText.includes('tech lead')) {
+              role = 'Architect'
+            }
+            
+            return {
+              name: r.name,
+              role: role,
+              tech_stack: r.tech_stack,
+              capacity: r.capacity,
+            }
+          }),
         }),
       })
 
@@ -187,10 +258,55 @@ export default function SprintPlanner({ brdText, brdId, useDummyData = false }: 
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 space-y-6">
-      <h2 className="text-2xl font-semibold text-gray-700">Sprint Planner</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-semibold text-gray-700">Sprint Planner</h2>
+        {projectDefaults && (
+          <div className="px-3 py-1 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-xs text-blue-700">
+              📋 Project defaults applied (editable)
+            </p>
+          </div>
+        )}
+      </div>
 
       {!sprintPlan ? (
         <>
+          {projectDefaults && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-blue-800 mb-2">
+                <strong>Project Defaults Applied:</strong>
+              </p>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <span className="text-blue-600">Team Members:</span>{' '}
+                  <span className="font-medium">{projectDefaults.teamMembers}</span>
+                </div>
+                <div>
+                  <span className="text-blue-600">Capacity/Member:</span>{' '}
+                  <span className="font-medium">{projectDefaults.capacityPerMember} hrs</span>
+                </div>
+                <div>
+                  <span className="text-blue-600">Sprint Duration:</span>{' '}
+                  <span className="font-medium">{projectDefaults.sprintDuration} weeks</span>
+                </div>
+                {projectDefaults.techStack && (
+                  <div className="col-span-3">
+                    <span className="text-blue-600">Tech Stack:</span>{' '}
+                    <span className="font-medium">{projectDefaults.techStack}</span>
+                  </div>
+                )}
+                {projectDefaults.roles && projectDefaults.roles.length > 0 && (
+                  <div className="col-span-3">
+                    <span className="text-blue-600">Roles:</span>{' '}
+                    <span className="font-medium">{projectDefaults.roles.join(', ')}</span>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-blue-600 mt-2">
+                You can edit these values below if needed for this sprint.
+              </p>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -313,13 +429,22 @@ export default function SprintPlanner({ brdText, brdId, useDummyData = false }: 
                       Sprint
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      Stories
+                      Dev Stories
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
                       Story Points
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                      Capacity
+                      Dev Capacity
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+                      QA Tasks
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+                      PM Tasks
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+                      Architect Tasks
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
                       Utilization
@@ -345,7 +470,61 @@ export default function SprintPlanner({ brdText, brdId, useDummyData = false }: 
                           {sprint.totalStoryPoints}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {sprint.capacity}
+                          {sprint.capacity} pts
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {sprint.qaTasks && sprint.qaTasks.length > 0 ? (
+                            <div>
+                              <ul className="list-disc list-inside mb-1">
+                                {sprint.qaTasks.map((task, taskIndex) => (
+                                  <li key={taskIndex}>{task}</li>
+                                ))}
+                              </ul>
+                              {sprint.qaHours && (
+                                <span className="text-xs text-gray-500">
+                                  ({sprint.qaHours}h)
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {sprint.pmTasks && sprint.pmTasks.length > 0 ? (
+                            <div>
+                              <ul className="list-disc list-inside mb-1">
+                                {sprint.pmTasks.map((task, taskIndex) => (
+                                  <li key={taskIndex}>{task}</li>
+                                ))}
+                              </ul>
+                              {sprint.pmHours && (
+                                <span className="text-xs text-gray-500">
+                                  ({sprint.pmHours}h)
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {sprint.architectTasks && sprint.architectTasks.length > 0 ? (
+                            <div>
+                              <ul className="list-disc list-inside mb-1">
+                                {sprint.architectTasks.map((task, taskIndex) => (
+                                  <li key={taskIndex}>{task}</li>
+                                ))}
+                              </ul>
+                              {sprint.architectHours && (
+                                <span className="text-xs text-gray-500">
+                                  ({sprint.architectHours}h)
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <span

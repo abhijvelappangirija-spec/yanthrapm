@@ -77,6 +77,42 @@ CREATE TABLE sprints (
   sprint_breakdown JSONB NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Projects table (for storing default planning inputs)
+CREATE TABLE projects (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  team_members INTEGER NOT NULL,
+  capacity_per_member INTEGER NOT NULL,
+  sprint_duration INTEGER NOT NULL,
+  tech_stack TEXT,
+  roles TEXT[],
+  resources JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Resources structure (stored as JSONB in projects.resources):
+-- [
+--   {
+--     "id": "string",
+--     "name": "string",
+--     "tech_stack": "string",
+--     "capacity": number (hours per week)
+--   }
+-- ]
+
+-- Technical Context table (optional - for storing technical context)
+CREATE TABLE technical_context (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  brd_id UUID REFERENCES brds(id) UNIQUE,
+  user_id TEXT NOT NULL,
+  technical_context TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 ```
 
 ### 4. Run the Development Server
