@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import FileUploadZone from '@/components/FileUploadZone'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -11,7 +12,18 @@ import { generateBRDPDF } from '@/components/BRDPDF'
 
 type WorkflowStep = 'input' | 'brd' | 'technical-context' | 'sprint-plan'
 
+interface Project {
+  id: string
+  name: string
+  team_members: number
+  capacity_per_member: number
+  sprint_duration: number
+  tech_stack?: string
+  roles?: string[]
+}
+
 export default function BRDGeneratorPage() {
+  const searchParams = useSearchParams()
   const [inputContent, setInputContent] = useState('')
   const [brdContent, setBrdContent] = useState<string | null>(null)
   const [technicalContext, setTechnicalContext] = useState<string>('')
@@ -20,6 +32,44 @@ export default function BRDGeneratorPage() {
   const [error, setError] = useState<string | null>(null)
   const [brdId, setBrdId] = useState<string | null>(null)
   const [useDummyData, setUseDummyData] = useState(false)
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+  const [availableProjects, setAvailableProjects] = useState<Project[]>([])
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false)
+
+  useEffect(() => {
+    loadProjects()
+    const projectId = searchParams?.get('projectId')
+    if (projectId) {
+      loadProject(projectId)
+    }
+  }, [searchParams])
+
+  const loadProjects = async () => {
+    try {
+      setIsLoadingProjects(true)
+      const response = await fetch('/api/projects?userId=user-123')
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableProjects(data.projects || [])
+      }
+    } catch (err) {
+      console.error('Error loading projects:', err)
+    } finally {
+      setIsLoadingProjects(false)
+    }
+  }
+
+  const loadProject = async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setSelectedProject(data.project)
+      }
+    } catch (err) {
+      console.error('Error loading project:', err)
+    }
+  }
 
   const handleFileSelect = (content: string) => {
     setInputContent(content)
@@ -145,13 +195,28 @@ export default function BRDGeneratorPage() {
     <main className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900">BRD Generator</h1>
-          <Link
-            href="/dashboard"
-            className="text-blue-600 hover:text-blue-700 font-medium text-sm"
-          >
-            ← Back to Dashboard
-          </Link>
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900">BRD Generator</h1>
+            {selectedProject && (
+              <p className="text-sm text-gray-600 mt-1">
+                Using project: <span className="font-semibold">{selectedProject.name}</span>
+              </p>
+            )}
+          </div>
+          <div className="flex gap-4">
+            <Link
+              href="/projects"
+              className="text-blue-600 hover:text-blue-700 font-medium text-sm"
+            >
+              Manage Projects
+            </Link>
+            <Link
+              href="/dashboard"
+              className="text-blue-600 hover:text-blue-700 font-medium text-sm"
+            >
+              ← Back to Dashboard
+            </Link>
+          </div>
         </div>
 
         {!brdContent ? (
@@ -178,6 +243,37 @@ export default function BRDGeneratorPage() {
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
                 {error}
+              </div>
+            )}
+
+            {/* Project Selection */}
+            {availableProjects.length > 0 && (
+              <div className="border-t pt-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Project (Optional)
+                </label>
+                <select
+                  value={selectedProject?.id || ''}
+                  onChange={(e) => {
+                    const projectId = e.target.value
+                    if (projectId) {
+                      loadProject(projectId)
+                    } else {
+                      setSelectedProject(null)
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">No project selected</option>
+                  {availableProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Project defaults will be applied to sprint planning
+                </p>
               </div>
             )}
 
@@ -294,6 +390,13 @@ export default function BRDGeneratorPage() {
               brdId={brdId}
               technicalContext={technicalContext}
               useDummyData={useDummyData}
+              projectDefaults={selectedProject ? {
+                teamMembers: selectedProject.team_members,
+                capacityPerMember: selectedProject.capacity_per_member,
+                sprintDuration: selectedProject.sprint_duration,
+                techStack: selectedProject.tech_stack,
+                roles: selectedProject.roles,
+              } : undefined}
             />
           </div>
         )}

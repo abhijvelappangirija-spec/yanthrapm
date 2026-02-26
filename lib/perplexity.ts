@@ -107,7 +107,72 @@ ${content}`
 }
 
 /**
- * Generate Sprint Plan using Perplexity AI with Technical Context
+ * Generate improved BRD from an uploaded file using Perplexity AI
+ * This function takes an existing BRD file and enhances/improves it
+ */
+export async function generateBRDFromFile(fileContent: string): Promise<string> {
+  const systemPrompt = `You are an expert business analyst. Review and enhance an existing Business Requirements Document (BRD) to create a comprehensive, well-structured BRD in STRICT HTML format.
+
+Your task:
+1. Analyze the provided BRD document
+2. Identify missing sections, gaps, or areas that need improvement
+3. Enhance the content with additional details, clarity, and completeness
+4. Ensure all standard BRD sections are present and well-documented
+5. Maintain the original intent and requirements while improving structure and detail
+
+The enhanced BRD should include:
+1. Executive Summary (clear overview of the project)
+2. Business Objectives (specific, measurable goals)
+3. Functional Requirements (detailed user stories, features, workflows)
+4. Non-Functional Requirements (performance, security, scalability, usability)
+5. Assumptions and Constraints (technical, business, timeline constraints)
+6. Success Criteria (measurable outcomes and KPIs)
+
+Requirements:
+- Output MUST be valid HTML only.
+- Do NOT include markdown, backticks, or any explanation.
+- Start with <html> and end with </html>.
+- Use semantic HTML: h1/h2 for headings, p for paragraphs, ul/li for lists.
+- Preserve all important information from the original document.
+- Add missing details and improve clarity where needed.`
+
+  // Include substantial portion of file content for analysis
+  // Use up to 8000 characters to give Perplexity enough context while keeping prompt manageable
+  const maxContentLength = 8000
+  const contentToAnalyze = fileContent.length > maxContentLength 
+    ? fileContent.substring(0, maxContentLength) + '\n\n[... document continues - analyze the provided content comprehensively ...]'
+    : fileContent
+
+  const userPrompt = `Review and enhance the following BRD document. Analyze the provided document content and generate an improved, comprehensive Business Requirements Document.
+
+Document Analysis Instructions:
+1. Review the complete BRD document structure and all provided content
+2. Preserve ALL original requirements, features, specifications, and details
+3. Enhance sections that need more clarity or detail
+4. Fill in any missing standard BRD sections (Executive Summary, Objectives, etc.)
+5. Improve organization, structure, and professional presentation
+6. Add implementation details where they would be helpful
+7. Maintain the original intent and scope while improving completeness
+
+BRD Document Content:
+${contentToAnalyze}
+
+Generate a comprehensive enhanced BRD that:
+- Includes all information from the original document
+- Is well-structured with proper sections
+- Has improved clarity and detail
+- Is ready for implementation planning`
+
+  const messages: PerplexityMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ]
+
+  return await callPerplexityAI(messages)
+}
+
+/**
+ * Generate Sprint Plan using Perplexity AI with Technical Context and Role-Based Planning
  */
 export async function generateSprintPlanWithPerplexity(
   brdText: string,
@@ -115,7 +180,13 @@ export async function generateSprintPlanWithPerplexity(
   teamMembers: number,
   capacityPerMember: number,
   sprintDuration: number,
-  velocity?: number
+  velocity?: number,
+  resources?: Array<{
+    name: string
+    role: string
+    tech_stack?: string
+    capacity: number
+  }>
 ): Promise<{
   storyGroups: Array<{
     epic: string
@@ -129,23 +200,57 @@ export async function generateSprintPlanWithPerplexity(
     stories: string[]
     totalStoryPoints: number
     capacity: number
+    qaTasks?: string[]
+    qaHours?: number
+    pmTasks?: string[]
+    pmHours?: number
+    architectTasks?: string[]
+    architectHours?: number
   }>
 }> {
-  const totalCapacity = teamMembers * capacityPerMember * sprintDuration
-  const calculatedVelocity = velocity || Math.floor(totalCapacity / 8)
+  // Calculate developer capacity for velocity calculation
+  let developerCapacity = 0
+  if (resources && resources.length > 0) {
+    resources.forEach((resource) => {
+      const role = resource.role.toLowerCase()
+      if (!role.includes('qa') && !role.includes('test') && !role.includes('quality') &&
+          !role.includes('pm') && !role.includes('project manager') && !role.includes('manager') &&
+          !role.includes('architect') && !role.includes('architecture')) {
+        developerCapacity += resource.capacity * sprintDuration
+      }
+    })
+  } else {
+    developerCapacity = teamMembers * capacityPerMember * sprintDuration
+  }
+
+  const calculatedVelocity = velocity || Math.floor(developerCapacity / 8)
 
   // Import and use the prompt generator
   const { generateSprintPlanPrompt } = await import('@/lib/prompts/sprintPlan')
+  type TeamResource = {
+    name: string
+    role: string
+    tech_stack?: string
+    capacity: number
+  }
+  const teamResources: TeamResource[] | undefined = resources?.map((r) => ({
+    name: r.name,
+    role: r.role,
+    tech_stack: r.tech_stack,
+    capacity: r.capacity,
+  }))
+  
   const userPrompt = generateSprintPlanPrompt(
     brdText,
     technicalContext,
     teamMembers,
     capacityPerMember,
     sprintDuration,
-    calculatedVelocity
+    calculatedVelocity,
+    teamResources
   )
 
-  const systemPrompt = `You are an expert Agile coach and Scrum Master. Generate a detailed sprint plan based on a Business Requirements Document and Technical Context.
+  const systemPrompt = `You are an expert Agile coach and Scrum Master. Generate a detailed sprint plan based on a Business Requirements Document and Technical Context, with role-based task allocation.
 
 Your response must be a valid JSON object with this exact structure:
 {
@@ -163,7 +268,13 @@ Your response must be a valid JSON object with this exact structure:
       "sprint": number,
       "stories": ["Story 1", "Story 2", ...],
       "totalStoryPoints": number,
-      "capacity": number
+      "capacity": number,
+      "qaTasks": ["QA Task 1", "QA Task 2", ...],
+      "qaHours": number,
+      "pmTasks": ["PM Task 1", "PM Task 2", ...],
+      "pmHours": number,
+      "architectTasks": ["Architect Task 1", "Architect Task 2", ...],
+      "architectHours": number
     }
   ]
 }
@@ -174,14 +285,19 @@ Rules:
 - Do NOT propose designs or tech choices that contradict the provided Technical Context
 - Break down the BRD into logical epics (story groups) based on both business needs and technical architecture
 - Each epic should have multiple user stories
-- Assign story points using Fibonacci sequence (1, 2, 3, 5, 8, 13, 21)
-- Distribute stories across sprints based on velocity: ${calculatedVelocity} story points per sprint
-- Ensure each sprint doesn't exceed the velocity capacity
+- Assign story points using Fibonacci sequence (1, 2, 3, 5, 8, 13, 21) - ONLY for development stories
+- Distribute development stories across sprints based on developer velocity: ${calculatedVelocity} story points per sprint
+- Ensure each sprint doesn't exceed the developer velocity capacity
+- Create QA tasks (if QA team exists) for testing activities aligned with development stories
+- Create PM tasks (if PM exists) for sprint management and coordination
+- Create Architect tasks (if Architects exist) for design and technical guidance
+- Estimate QA/PM/Architect tasks in hours, not story points
+- DO NOT use QA/PM/Architect capacity for development story points
 - Identify technical dependencies and sequencing based on the existing stack
-- Highlight areas where existing systems require refactoring vs. new development
-- storiesCount should be the total number of stories across all epics
-- suggestedStoryPoints should be the sum of all story points
-- sprintBreakdown should distribute stories across sprints respecting velocity limits`
+- storiesCount should be the total number of development stories across all epics
+- suggestedStoryPoints should be the sum of all development story points
+- sprintBreakdown should distribute development stories across sprints respecting developer velocity limits
+- Include role-specific tasks (qaTasks, pmTasks, architectTasks) in each sprint if those roles exist`
 
   const messages: PerplexityMessage[] = [
     { role: 'system', content: systemPrompt },
