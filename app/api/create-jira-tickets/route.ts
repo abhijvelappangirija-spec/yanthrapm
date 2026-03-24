@@ -1,54 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+import { ActorResolutionError, resolveRequestActor } from '@/lib/auth/request-actor'
+import { parseCreateJiraTicketsPayload } from '@/lib/jira-payload'
 import { createJiraTickets } from '@/lib/jira'
+import {
+  RequestValidationError,
+  requireObjectPayload,
+} from '@/lib/security/request-validation'
+import {
+  getPublicServiceErrorMessage,
+  getServiceErrorText,
+  isConnectivityError,
+} from '@/lib/service-errors'
 
-interface JiraStory {
-  title: string
-  description: string
-  points: number
-  epic: string
-}
+function getPublicJiraTicketError(error: string): string {
+  const normalized = error.toLowerCase()
 
-interface CreateJiraTicketsRequest {
-  stories: JiraStory[]
-  jiraEmail: string
-  jiraProjectKey: string
+  if (
+    normalized.includes('401') ||
+    normalized.includes('403') ||
+    normalized.includes('unauthorized') ||
+    normalized.includes('forbidden')
+  ) {
+    return 'Jira rejected the request. Check the Jira user permissions and project access.'
+  }
+
+  if (normalized.includes('400') || normalized.includes('field')) {
+    return 'Jira rejected the payload. Check the Jira field configuration and project settings.'
+  }
+
+  if (isConnectivityError(error)) {
+    return getPublicServiceErrorMessage('Jira Cloud', error)
+  }
+
+  return 'Failed to create the Jira issue for this story.'
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const {
-      stories,
-      jiraEmail,
-      jiraProjectKey,
-    }: CreateJiraTicketsRequest = await request.json()
+    await resolveRequestActor(request)
+    const payload = requireObjectPayload(await request.json())
+    const { stories, jiraEmail, jiraProjectKey } = parseCreateJiraTicketsPayload(payload)
 
     // Get Jira configuration from environment variables
     const jiraBaseUrl = process.env.JIRA_BASE_URL
     const jiraApiToken = process.env.JIRA_API_TOKEN
-
-    // Validation
-    if (!stories || !Array.isArray(stories) || stories.length === 0) {
-      return NextResponse.json(
-        { error: 'Stories array is required and must not be empty' },
-        { status: 400 }
-      )
-    }
 
     if (!jiraBaseUrl || !jiraEmail || !jiraApiToken || !jiraProjectKey) {
       return NextResponse.json(
         { error: 'Jira configuration is incomplete. Please ensure JIRA_BASE_URL and JIRA_API_TOKEN are set in environment variables, and provide email and projectKey in the request.' },
         { status: 400 }
       )
-    }
-
-    // Validate each story
-    for (const story of stories) {
-      if (!story.title || !story.epic) {
-        return NextResponse.json(
-          { error: 'Each story must have a title and epic' },
-          { status: 400 }
-        )
-      }
     }
 
     // Create Jira tickets
@@ -73,17 +75,44 @@ export async function POST(request: NextRequest) {
         })),
         errors: result.errors.map((item) => ({
           storyTitle: item.story.title,
-          error: item.error,
+          error: getPublicJiraTicketError(item.error),
         })),
       },
     })
   } catch (error) {
+    if (
+      error instanceof ActorResolutionError ||
+      error instanceof RequestValidationError
+    ) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status }
+      )
+    }
+
     console.error('Error creating Jira tickets:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
+
+    if (isConnectivityError(error)) {
+      return NextResponse.json(
+        { error: getPublicServiceErrorMessage('Jira Cloud', error) },
+        { status: 503 }
+      )
+    }
+
+    const errorText = getServiceErrorText(error)
+    if (errorText.includes('401') || errorText.includes('403')) {
+      return NextResponse.json(
+        {
+          error:
+            'Jira rejected the request. Check the Jira user permissions and project access.',
+        },
+        { status: 502 }
+      )
+    }
+
     return NextResponse.json(
-      { error: errorMessage },
+      { error: 'Failed to create Jira tickets' },
       { status: 500 }
     )
   }
 }
-

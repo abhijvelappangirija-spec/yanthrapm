@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+
+import RequireAppAccess from '@/components/auth/RequireAppAccess'
 import StoryListing, { Story } from '@/components/StoryListing'
 
 const SAMPLE_STORIES: Story[] = [
@@ -90,8 +92,9 @@ export default function StoriesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-7xl mx-auto">
+    <RequireAppAccess>
+      <main className="min-h-screen bg-gray-50 py-8 px-4">
+        <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Story Management</h1>
           <p className="text-gray-600">
@@ -160,7 +163,8 @@ const handleSaveChanges = async (stories: Story[]) => {
 />`}
           </pre>
         </div>
-      </div>
-    </main>
+        </div>
+      </main>
+    </RequireAppAccess>
   )
 }

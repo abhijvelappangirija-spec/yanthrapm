@@ -1,14 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import AiAuditSummary from '@/components/AiAuditSummary'
+import RequireAppAccess from '@/components/auth/RequireAppAccess'
 import FileUploadZone from '@/components/FileUploadZone'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import BRDViewer from '@/components/BRDViewer'
 import SprintPlanner from '@/components/SprintPlanner'
 import TechnicalContextForm from '@/components/TechnicalContextForm'
 import { generateBRDPDF } from '@/components/BRDPDF'
+import { fetchWithAuth } from '@/lib/auth/fetch-with-auth'
+import type { AiGenerationMetadata } from '@/lib/ai/types'
 
 type WorkflowStep = 'input' | 'brd' | 'technical-context' | 'sprint-plan'
 
@@ -22,7 +26,7 @@ interface Project {
   roles?: string[]
 }
 
-export default function BRDGeneratorPage() {
+function BRDGeneratorPageContent() {
   const searchParams = useSearchParams()
   const [inputContent, setInputContent] = useState('')
   const [brdContent, setBrdContent] = useState<string | null>(null)
@@ -31,7 +35,9 @@ export default function BRDGeneratorPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [brdId, setBrdId] = useState<string | null>(null)
+  const [brdAiMetadata, setBrdAiMetadata] = useState<AiGenerationMetadata | null>(null)
   const [useDummyData, setUseDummyData] = useState(false)
+  const [requirePrivateProcessing, setRequirePrivateProcessing] = useState(false)
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [availableProjects, setAvailableProjects] = useState<Project[]>([])
   const [isLoadingProjects, setIsLoadingProjects] = useState(false)
@@ -47,7 +53,7 @@ export default function BRDGeneratorPage() {
   const loadProjects = async () => {
     try {
       setIsLoadingProjects(true)
-      const response = await fetch('/api/projects?userId=user-123')
+      const response = await fetchWithAuth('/api/projects')
       if (response.ok) {
         const data = await response.json()
         setAvailableProjects(data.projects || [])
@@ -61,7 +67,7 @@ export default function BRDGeneratorPage() {
 
   const loadProject = async (projectId: string) => {
     try {
-      const response = await fetch(`/api/projects/${projectId}`)
+      const response = await fetchWithAuth(`/api/projects/${projectId}`)
       if (response.ok) {
         const data = await response.json()
         setSelectedProject(data.project)
@@ -89,15 +95,15 @@ export default function BRDGeneratorPage() {
     setError(null)
 
     try {
-      const response = await fetch('/api/generate-brd', {
+      const response = await fetchWithAuth('/api/generate-brd', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           content: inputContent,
-          userId: 'user-123', // Replace with actual user ID from auth
           useDummyData,
+          requirePrivateProcessing,
         }),
       })
 
@@ -109,6 +115,7 @@ export default function BRDGeneratorPage() {
 
       setBrdContent(data.brd)
       setBrdId(data.id)
+      setBrdAiMetadata(data.ai || null)
       setCurrentStep('technical-context')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -122,7 +129,7 @@ export default function BRDGeneratorPage() {
     // Optionally save to database
     if (brdId) {
       try {
-        await fetch('/api/save-technical-context', {
+        await fetchWithAuth('/api/save-technical-context', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -130,7 +137,6 @@ export default function BRDGeneratorPage() {
           body: JSON.stringify({
             brdId,
             technicalContext: context,
-            userId: 'user-123',
           }),
         })
       } catch (err) {
@@ -175,7 +181,7 @@ export default function BRDGeneratorPage() {
     // Optionally update in Supabase
     if (brdId) {
       try {
-        await fetch('/api/update-brd', {
+        await fetchWithAuth('/api/update-brd', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -192,8 +198,9 @@ export default function BRDGeneratorPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-6xl mx-auto">
+    <RequireAppAccess>
+      <main className="min-h-screen bg-gray-50 py-8 px-4">
+        <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-4xl font-bold text-gray-900">BRD Generator</h1>
@@ -290,6 +297,22 @@ export default function BRDGeneratorPage() {
               </label>
             </div>
 
+            <div className="flex items-center space-x-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <input
+                type="checkbox"
+                id="requirePrivateProcessing"
+                checked={requirePrivateProcessing}
+                onChange={(e) => setRequirePrivateProcessing(e.target.checked)}
+                className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+              />
+              <label
+                htmlFor="requirePrivateProcessing"
+                className="text-sm text-gray-700 cursor-pointer"
+              >
+                Sensitive input: require private/local AI processing only
+              </label>
+            </div>
+
             <button
               onClick={handleGenerateBRD}
               disabled={isLoading || !inputContent.trim()}
@@ -312,6 +335,11 @@ export default function BRDGeneratorPage() {
                     ⚠️ Using dummy data for testing
                   </p>
                 )}
+                {requirePrivateProcessing && (
+                  <p className="text-sm text-emerald-700 mt-1">
+                    Sensitive mode: private/local AI routing required
+                  </p>
+                )}
               </div>
               <button
                 onClick={handleDownloadPDF}
@@ -320,6 +348,8 @@ export default function BRDGeneratorPage() {
                 Download BRD (PDF)
               </button>
             </div>
+
+            <AiAuditSummary ai={brdAiMetadata} />
 
             <BRDViewer
               initialContent={brdContent}
@@ -332,6 +362,7 @@ export default function BRDGeneratorPage() {
                 setInputContent('')
                 setTechnicalContext('')
                 setBrdId(null)
+                setBrdAiMetadata(null)
                 setError(null)
                 setCurrentStep('input')
               }}
@@ -390,6 +421,7 @@ export default function BRDGeneratorPage() {
               brdId={brdId}
               technicalContext={technicalContext}
               useDummyData={useDummyData}
+              requirePrivateProcessing={requirePrivateProcessing}
               projectDefaults={selectedProject ? {
                 teamMembers: selectedProject.team_members,
                 capacityPerMember: selectedProject.capacity_per_member,
@@ -400,7 +432,16 @@ export default function BRDGeneratorPage() {
             />
           </div>
         )}
-      </div>
-    </main>
+        </div>
+      </main>
+    </RequireAppAccess>
+  )
+}
+
+export default function BRDGeneratorPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <BRDGeneratorPageContent />
+    </Suspense>
   )
 }

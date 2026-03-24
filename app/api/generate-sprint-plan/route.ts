@@ -1,24 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
-import { generateSprintPlanWithPerplexity } from '@/lib/perplexity'
 
-interface SprintPlanRequest {
-  brdText: string
-  technicalContext?: string
-  teamMembers: number
-  capacityPerMember: number
-  sprintDuration: number
-  velocity?: number
-  brdId?: string
-  userId?: string
-  useDummyData?: boolean
-  resources?: Array<{
-    name: string
-    role: string
-    tech_stack?: string
-    capacity: number
-  }>
-}
+import { classifyAiInput } from '@/lib/ai/input-classification'
+import { AiGenerationMetadata } from '@/lib/ai/types'
+import { AiPolicyError } from '@/lib/ai/provider-policy'
+import {
+  buildAiMetadataColumns,
+  executeWithOptionalAiMetadata,
+} from '@/lib/ai/persistence'
+import { generateSprintPlanWithPolicy } from '@/lib/ai/service'
+import { ActorResolutionError, resolveRequestActor } from '@/lib/auth/request-actor'
+import { parseSprintPlanPayload } from '@/lib/sprint-plan-payload'
+import {
+  RequestValidationError,
+  requireObjectPayload,
+} from '@/lib/security/request-validation'
+import {
+  getPublicServiceErrorMessage,
+  isConnectivityError,
+} from '@/lib/service-errors'
+import { createActorScopedSupabaseClient } from '@/lib/supabase-server'
 
 interface StoryGroup {
   epic: string
@@ -48,6 +48,8 @@ interface SprintPlanResponse {
 
 export async function POST(request: NextRequest) {
   try {
+    const actor = await resolveRequestActor(request)
+    const payload = requireObjectPayload(await request.json())
     const {
       brdText,
       technicalContext = '',
@@ -56,63 +58,49 @@ export async function POST(request: NextRequest) {
       sprintDuration,
       velocity,
       brdId,
-      userId,
       useDummyData,
+      requirePrivateProcessing,
       resources,
-    }: SprintPlanRequest = await request.json()
+    } = parseSprintPlanPayload(payload)
+    const classification = classifyAiInput(
+      `${brdText}\n\n${technicalContext || ''}`
+    )
+    const effectiveRequirePrivateProcessing =
+      requirePrivateProcessing || classification.requirePrivateProcessing
 
-    if (!brdText) {
-      return NextResponse.json(
-        { error: 'BRD text is required' },
-        { status: 400 }
-      )
-    }
-
-    if (!teamMembers || !capacityPerMember || !sprintDuration) {
-      return NextResponse.json(
-        { error: 'Team members, capacity per member, and sprint duration are required' },
-        { status: 400 }
-      )
-    }
-
-    // Generate sprint plan using Perplexity AI or dummy data
-    let sprintPlan
-    if (useDummyData) {
-      const { generateDummySprintPlan } = await import('@/lib/perplexity')
-      sprintPlan = generateDummySprintPlan(
-        teamMembers,
-        capacityPerMember,
-        sprintDuration,
-        velocity
-      )
-      console.log('Using dummy sprint plan data for testing')
-    } else {
-      sprintPlan = await generateSprintPlanWithPerplexity(
+    const {
+      ai,
+      sprintPlan,
+    }: {
+      ai: AiGenerationMetadata
+      sprintPlan: SprintPlanResponse
+    } = await generateSprintPlanWithPolicy({
         brdText,
         technicalContext,
         teamMembers,
         capacityPerMember,
         sprintDuration,
         velocity,
-        resources
-      )
-    }
+        resources,
+        useDummyData,
+        requirePrivateProcessing: effectiveRequirePrivateProcessing,
+      })
 
-    // Validate sprint plan data before saving
     if (!sprintPlan.storyGroups || !Array.isArray(sprintPlan.storyGroups)) {
-      throw new Error('Invalid sprint plan: storyGroups is missing or not an array')
+      throw new Error('Generated sprint plan failed validation')
     }
 
     if (!sprintPlan.sprintBreakdown || !Array.isArray(sprintPlan.sprintBreakdown)) {
-      throw new Error('Invalid sprint plan: sprintBreakdown is missing or not an array')
+      throw new Error('Generated sprint plan failed validation')
     }
 
-    // Try to store in Supabase, but don't fail if it doesn't work
+    const supabase = createActorScopedSupabaseClient(request)
+
     let savedId: string | null = null
+    let aiMetadataSaved = false
     try {
-      // Prepare data for insertion
       const insertData = {
-        user_id: userId || 'anonymous',
+        user_id: actor.userId,
         brd_id: brdId || null,
         team_members: teamMembers,
         capacity_per_member: capacityPerMember,
@@ -125,68 +113,98 @@ export async function POST(request: NextRequest) {
         created_at: new Date().toISOString(),
       }
 
-      // Log data size for debugging
       const dataSize = JSON.stringify(insertData).length
       console.log(`Attempting to save sprint plan. Data size: ${dataSize} bytes`)
-      
-      // Check if data is too large (PostgreSQL JSONB has practical limits)
-      // If over 1MB, log a warning but still try
+
       if (dataSize > 1024 * 1024) {
-        console.warn(`Warning: Sprint plan data is large (${Math.round(dataSize / 1024)}KB). This may cause issues.`)
+        console.warn(
+          `Warning: Sprint plan data is large (${Math.round(dataSize / 1024)}KB). This may cause issues.`
+        )
       }
 
-      const { data, error } = await supabase
-        .from('sprints')
-        .insert(insertData)
-        .select()
-        .single()
+      const { data, error, aiMetadataSaved: metadataPersisted } =
+        await executeWithOptionalAiMetadata<{ id: string }>((includeAiMetadata) =>
+          supabase
+            .from('sprints')
+            .insert({
+              ...insertData,
+              ...(includeAiMetadata ? buildAiMetadataColumns(ai) : {}),
+            })
+            .select()
+            .single()
+        )
+
+      aiMetadataSaved = metadataPersisted
 
       if (error) {
-        // Check if it's a Cloudflare/Supabase HTML error response
         let errorMessage = error.message || 'Unknown error'
-        const isHtmlError = typeof errorMessage === 'string' && 
-                           (errorMessage.includes('<html>') || errorMessage.includes('500 Internal Server Error'))
-        
+        const isHtmlError =
+          typeof errorMessage === 'string' &&
+          (errorMessage.includes('<html>') ||
+            errorMessage.includes('500 Internal Server Error'))
+
         if (isHtmlError) {
-          errorMessage = 'Supabase server error (500) - This may be due to data size limits, network issues, or Supabase configuration'
+          errorMessage =
+            'Supabase server error (500) - This may be due to data size limits, network issues, or Supabase configuration'
           console.error('Supabase returned HTML error page (likely 500 error from Cloudflare)')
         }
 
         console.error('Supabase error:', {
           message: errorMessage,
           code: error.code,
-          details: error.details,
           hint: error.hint,
           isHtmlError,
         })
-        
-        // Don't throw - continue and return the sprint plan anyway
-        console.warn('Failed to save sprint plan to Supabase, but continuing with response. Sprint plan will still be returned to the user.')
+
+        console.warn(
+          'Failed to save sprint plan to Supabase, but continuing with response. Sprint plan will still be returned to the user.'
+        )
       } else if (data) {
         savedId = data.id
         console.log('Successfully saved sprint plan to Supabase:', savedId)
+      } else {
+        console.warn('Sprint plan generated, but the saved record could not be confirmed.')
       }
     } catch (saveError) {
-      // Catch any unexpected errors during save
       console.error('Unexpected error saving to Supabase:', saveError)
-      // Don't throw - continue and return the sprint plan anyway
     }
 
-    // Return the sprint plan regardless of save success/failure
     return NextResponse.json({
       success: true,
       ...sprintPlan,
       id: savedId,
       saved: savedId !== null,
+      provider: ai.provider,
+      ai,
+      aiMetadataSaved,
+      classification,
     })
   } catch (error) {
+    if (
+      error instanceof AiPolicyError ||
+      error instanceof ActorResolutionError ||
+      error instanceof RequestValidationError
+    ) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status }
+      )
+    }
+
     console.error('Error generating sprint plan:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
+
+    if (isConnectivityError(error)) {
+      return NextResponse.json(
+        {
+          error: `${getPublicServiceErrorMessage('AI provider', error)} Enable dummy data for local testing or fix the network/TLS configuration.`,
+        },
+        { status: 503 }
+      )
+    }
+
     return NextResponse.json(
-      { error: errorMessage },
+      { error: 'Failed to generate sprint plan' },
       { status: 500 }
     )
   }
 }
-
-

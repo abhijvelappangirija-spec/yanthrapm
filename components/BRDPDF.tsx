@@ -119,7 +119,7 @@ function parseHTMLToPDFElements(html: string): PDFElement[] {
       .replace(/&apos;/g, "'")
     
     // Extract all block elements with their positions
-    const regex = /<(h1|h2|h3|p|li)[^>]*>(.*?)<\/\1>/gis
+    const regex = /<(h1|h2|h3|p|li)[^>]*>([\s\S]*?)<\/\1>/gi
     const matches: Array<{ type: 'h1' | 'h2' | 'h3' | 'p' | 'li', text: string, pos: number }> = []
     
     let match
@@ -224,4 +224,3 @@ export async function generateBRDPDF(content: string): Promise<Blob> {
   const blob = await pdf(<BRDPDFDocument content={content} />).toBlob()
   return blob
 }
-

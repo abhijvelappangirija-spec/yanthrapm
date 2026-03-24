@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import { sanitizeRichTextHtml } from '@/lib/security/html'
 import 'react-quill/dist/quill.snow.css'
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false })
@@ -190,7 +191,7 @@ export default function StoryListing({
                 >
                   {story.description ? (
                     <div
-                      dangerouslySetInnerHTML={{ __html: story.description }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeRichTextHtml(story.description) }}
                       className="prose prose-sm max-w-none"
                     />
                   ) : (

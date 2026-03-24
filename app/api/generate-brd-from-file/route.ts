@@ -1,38 +1,76 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateBRDFromFile } from '@/lib/perplexity'
+import { classifyAiInput } from '@/lib/ai/input-classification'
+import { AiPolicyError } from '@/lib/ai/provider-policy'
+import { generateBRDFromFileWithPolicy } from '@/lib/ai/service'
+import { sanitizeGeneratedHtml } from '@/lib/security/html'
+import {
+  getPublicServiceErrorMessage,
+  isConnectivityError,
+} from '@/lib/service-errors'
+import {
+  RequestValidationError,
+  readBooleanField,
+  readRequiredStringField,
+  requireObjectPayload,
+} from '@/lib/security/request-validation'
 
 export async function POST(request: NextRequest) {
   try {
-    const { fileContent, useDummyData } = await request.json()
-
-    if (!fileContent) {
-      return NextResponse.json(
-        { error: 'File content is required' },
-        { status: 400 }
-      )
-    }
+    const payload = requireObjectPayload(await request.json())
+    const fileContent = readRequiredStringField(payload, 'fileContent', {
+      maxLength: 100000,
+    })
+    const useDummyData = readBooleanField(payload, 'useDummyData', false)
+    const requirePrivateProcessing = readBooleanField(
+      payload,
+      'requirePrivateProcessing',
+      false
+    )
+    const classification = classifyAiInput(fileContent)
+    const effectiveRequirePrivateProcessing =
+      requirePrivateProcessing || classification.requirePrivateProcessing
 
     // Generate improved BRD using Perplexity AI or dummy data
-    let brdText: string
-    if (useDummyData) {
-      const { generateDummyBRD } = await import('@/lib/perplexity')
-      brdText = generateDummyBRD(fileContent)
-      console.log('Using dummy BRD data for testing')
-    } else {
-      brdText = await generateBRDFromFile(fileContent)
-    }
+    const { content: brdText, ai } = await generateBRDFromFileWithPolicy({
+      fileContent,
+      useDummyData,
+      requirePrivateProcessing: effectiveRequirePrivateProcessing,
+    })
+
+    const sanitizedBrdText = sanitizeGeneratedHtml(brdText)
 
     return NextResponse.json({
       success: true,
-      brd: brdText,
+      brd: sanitizedBrdText,
+      provider: ai.provider,
+      ai,
+      classification,
     })
   } catch (error) {
+    if (
+      error instanceof AiPolicyError ||
+      error instanceof RequestValidationError
+    ) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status }
+      )
+    }
+
     console.error('Error generating BRD from file:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
+
+    if (isConnectivityError(error)) {
+      return NextResponse.json(
+        {
+          error: `${getPublicServiceErrorMessage('AI provider', error)} Enable dummy data for local testing or fix the network/TLS configuration.`,
+        },
+        { status: 503 }
+      )
+    }
+
     return NextResponse.json(
-      { error: errorMessage },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
 }
-

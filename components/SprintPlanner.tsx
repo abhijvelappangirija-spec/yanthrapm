@@ -1,6 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+
+import AiAuditSummary from '@/components/AiAuditSummary'
+import { fetchWithAuth } from '@/lib/auth/fetch-with-auth'
+import type { AiGenerationMetadata } from '@/lib/ai/types'
 import LoadingSpinner from './LoadingSpinner'
 
 /**
@@ -121,6 +125,7 @@ interface SprintPlannerProps {
   brdId?: string | null
   technicalContext?: string
   useDummyData?: boolean
+  requirePrivateProcessing?: boolean
   projectDefaults?: ProjectDefaults
 }
 
@@ -155,6 +160,7 @@ export default function SprintPlanner({
   brdId,
   technicalContext = '',
   useDummyData = false,
+  requirePrivateProcessing = false,
   projectDefaults,
 }: SprintPlannerProps) {
   const [teamMembers, setTeamMembers] = useState<number>(
@@ -179,6 +185,7 @@ export default function SprintPlanner({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sprintPlan, setSprintPlan] = useState<SprintPlanResponse | null>(null)
+  const [sprintAiMetadata, setSprintAiMetadata] = useState<AiGenerationMetadata | null>(null)
   const [showJiraModal, setShowJiraModal] = useState(false)
   const [isCreatingJira, setIsCreatingJira] = useState(false)
   const [jiraResult, setJiraResult] = useState<any>(null)
@@ -195,9 +202,10 @@ export default function SprintPlanner({
 
     setIsLoading(true)
     setError(null)
+    setSprintAiMetadata(null)
 
     try {
-      const response = await fetch('/api/generate-sprint-plan', {
+      const response = await fetchWithAuth('/api/generate-sprint-plan', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -210,8 +218,8 @@ export default function SprintPlanner({
           sprintDuration,
           velocity: velocity || undefined,
           brdId: brdId || undefined,
-          userId: 'user-123', // Replace with actual user ID from auth
           useDummyData,
+          requirePrivateProcessing,
           resources: projectDefaults?.resources?.map((r) => {
             // Map tech_stack and name to role based on keywords
             const techStack = (r.tech_stack || '').toLowerCase()
@@ -249,6 +257,7 @@ export default function SprintPlanner({
       }
 
       setSprintPlan(data)
+      setSprintAiMetadata(data.ai || null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -380,6 +389,7 @@ export default function SprintPlanner({
         </>
       ) : (
         <div className="space-y-6">
+          <AiAuditSummary ai={sprintAiMetadata} />
           {/* Summary Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-blue-50 p-4 rounded-lg">
@@ -697,7 +707,7 @@ export default function SprintPlanner({
                       })
                     })
 
-                    const response = await fetch('/api/create-jira-tickets', {
+                    const response = await fetchWithAuth('/api/create-jira-tickets', {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',
@@ -751,4 +761,3 @@ export default function SprintPlanner({
     </div>
   )
 }
-

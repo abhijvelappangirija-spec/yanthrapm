@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
+import RequireAppAccess from '@/components/auth/RequireAppAccess'
+import { fetchWithAuth } from '@/lib/auth/fetch-with-auth'
+
 interface Resource {
   id: string
   name: string
@@ -52,7 +55,7 @@ export default function ProjectsPage() {
   const loadProjects = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch('/api/projects')
+      const response = await fetchWithAuth('/api/projects')
       if (!response.ok) {
         throw new Error('Failed to load projects')
       }
@@ -89,7 +92,7 @@ export default function ProjectsPage() {
         ? Math.round(resources.reduce((sum, r) => sum + r.capacity, 0) / resources.length)
         : formData.capacity_per_member
 
-      const response = await fetch('/api/projects', {
+      const response = await fetchWithAuth('/api/projects', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -100,7 +103,6 @@ export default function ProjectsPage() {
           capacity_per_member: avgCapacity,
           roles: rolesArray,
           resources: resources.length > 0 ? resources : undefined,
-          userId: 'user-123', // Replace with actual user ID from auth
         }),
       })
 
@@ -143,7 +145,7 @@ export default function ProjectsPage() {
         ? Math.round(resources.reduce((sum, r) => sum + r.capacity, 0) / resources.length)
         : formData.capacity_per_member
 
-      const response = await fetch(`/api/projects/${editingProject.id}`, {
+      const response = await fetchWithAuth(`/api/projects/${editingProject.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -174,7 +176,7 @@ export default function ProjectsPage() {
     if (!confirm('Are you sure you want to delete this project?')) return
 
     try {
-      const response = await fetch(`/api/projects/${id}`, {
+      const response = await fetchWithAuth(`/api/projects/${id}`, {
         method: 'DELETE',
       })
 
@@ -244,7 +246,8 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <RequireAppAccess>
+      <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
@@ -538,7 +541,7 @@ export default function ProjectsPage() {
                   <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
                     <p className="text-gray-500 text-sm mb-2">No resources added yet</p>
                     <p className="text-gray-400 text-xs">
-                      Click "Add Resource" to add team members with individual details
+                      Click &quot;Add Resource&quot; to add team members with individual details
                     </p>
                   </div>
                 ) : (
@@ -640,7 +643,7 @@ export default function ProjectsPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </RequireAppAccess>
   )
 }
-

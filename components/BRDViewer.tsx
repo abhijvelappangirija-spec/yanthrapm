@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import { normalizeGeneratedHtml, sanitizeRichTextHtml } from '@/lib/security/html'
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false })
 import 'react-quill/dist/quill.snow.css'
@@ -22,7 +23,7 @@ function normalizeHTMLContent(content: string): string {
     return '<p class="text-gray-400 italic">No content available</p>'
   }
 
-  let normalized = content.trim()
+  let normalized = normalizeGeneratedHtml(content.trim())
 
   // Check if it's a full HTML document
   const hasHTMLTag = /<html[^>]*>/i.test(normalized)
@@ -52,7 +53,7 @@ function normalizeHTMLContent(content: string): string {
     normalized = convertTextToHTML(normalized)
   }
 
-  return normalized.trim()
+  return sanitizeRichTextHtml(normalized.trim())
 }
 
 /**
@@ -242,4 +243,3 @@ export default function BRDViewer({ initialContent, onContentChange }: BRDViewer
     </div>
   )
 }
-

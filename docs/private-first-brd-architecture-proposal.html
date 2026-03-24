@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Private-First BRD Architecture Proposal</title>
+  <style>
+    body {
+      font-family: "Aptos", "Segoe UI", Arial, sans-serif;
+      color: #1f2937;
+      line-height: 1.55;
+      margin: 40px;
+      max-width: 980px;
+    }
+    h1, h2, h3 {
+      color: #0f172a;
+      margin-top: 28px;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 28px;
+      border-bottom: 3px solid #1d4ed8;
+      padding-bottom: 10px;
+    }
+    h2 {
+      font-size: 22px;
+      border-left: 5px solid #2563eb;
+      padding-left: 10px;
+    }
+    h3 {
+      font-size: 18px;
+    }
+    p {
+      margin: 10px 0;
+    }
+    ul, ol {
+      margin: 10px 0 14px 22px;
+    }
+    li {
+      margin: 6px 0;
+    }
+    .meta {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      padding: 14px 16px;
+      border-radius: 8px;
+      margin: 18px 0 22px;
+    }
+    .summary {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      padding: 16px 18px;
+      border-radius: 8px;
+      margin: 18px 0 24px;
+    }
+    .code-block {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      white-space: pre-wrap;
+      font-size: 13px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 22px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .pill {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-left: 8px;
+    }
+    .high {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .medium {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .note {
+      background: #fff7ed;
+      border-left: 4px solid #f97316;
+      padding: 12px 14px;
+      margin: 16px 0;
+    }
+    .small {
+      font-size: 13px;
+      color: #475569;
+    }
+  </style>
+</head>
+<body>
+  <h1>Private-First BRD Architecture Proposal</h1>
+
+  <div class="meta">
+    <p><strong>Version:</strong> 1.0</p>
+    <p><strong>Date:</strong> March 23, 2026</p>
+    <p><strong>Audience:</strong> Abhij</p>
+  </div>
+
+  <div class="summary">
+    <p><strong>Executive Summary</strong></p>
+    <p>
+      The current BRD generation flow is useful for prototyping, but it is not sufficient for sensitive or enterprise-grade usage.
+      Today, user content is sent directly to an external AI provider and the returned BRD is stored as HTML with limited validation.
+      This increases confidentiality risk and allows hallucinated or weakly grounded content to reach the final document.
+    </p>
+    <p>
+      The proposed solution is a <strong>private-first hybrid architecture</strong>. Sensitive inputs remain in a private model path.
+      A local or private model extracts facts, constraints, assumptions, and open questions into structured JSON before writing a BRD.
+      If fresh industry information is needed, a separate retrieval sidecar fetches only generic, sanitized, non-sensitive information from approved sources.
+      The final BRD is generated only after evidence extraction, validation, and output safety controls.
+    </p>
+    <p>
+      This does not create perfect security or perfect correctness. No system can claim that honestly. It does create a much stronger and more defensible architecture for client-sensitive BRD generation.
+    </p>
+  </div>
+
+  <h2>1. Why Change Is Needed</h2>
+  <p>The current implementation is strong enough for experimentation, but not for confidential or client-facing use. The main issues are:</p>
+  <ol>
+    <li>Sensitive business ideas and requirements can leave the application boundary.</li>
+    <li>The BRD is generated in a single pass, which makes hallucination harder to control.</li>
+    <li>The current prompts are generic and do not consistently produce architect-grade requirements.</li>
+    <li>The system trusts AI output and client-supplied identifiers more than it should.</li>
+    <li>The workflow does not clearly separate facts, assumptions, open questions, and current external references.</li>
+  </ol>
+
+  <h2>2. Current Architecture</h2>
+  <p>The current user flow is straightforward:</p>
+  <div class="code-block">User Input / File Upload
+        |
+        v
+BRD API Endpoint
+        |
+        v
+External AI Provider
+        |
+        v
+HTML BRD Response
+        |
+        v
+Store and Render</div>
+
+  <h3>Current strengths</h3>
+  <ul>
+    <li>Fast to build.</li>
+    <li>Low operational overhead.</li>
+    <li>Good for demos and rapid experimentation.</li>
+  </ul>
+
+  <h3>Current limitations</h3>
+  <ul>
+    <li>Direct external handling of user content creates confidentiality concerns.</li>
+    <li>Single-pass generation makes it easier for the model to invent unsupported details.</li>
+    <li>There is limited separation between data extraction, reasoning, document writing, and validation.</li>
+    <li>Current rendering and storage need stronger safety controls.</li>
+  </ul>
+
+  <h2>3. Proposed Future Architecture</h2>
+  <p>The target design is <strong>private-first</strong>, <strong>evidence-based</strong>, and <strong>policy-driven</strong>.</p>
+  <div class="code-block">User Input / Uploaded File
+        |
+        v
+Input Validation + Sensitivity Classification
+        |
+        v
+Private Evidence Extraction (Ollama / private model)
+        |
+        +------------------------------+
+        |                              |
+        | if policy allows and needed  |
+        v                              |
+Sanitized External Retrieval Sidecar   |
+        |                              |
+        +------------> Curated Facts --+
+                       |
+                       v
+Requirement Structuring + Assumptions Register
+                       |
+                       v
+Private BRD Writer
+                       |
+                       v
+Validation Layer
+- supported claims
+- section completeness
+- schema checks
+- HTML sanitization
+                       |
+                       v
+Storage + Review + Export</div>
+
+  <h3>What this changes</h3>
+  <ul>
+    <li>Raw sensitive input stays in the private path by default.</li>
+    <li>Current or latest information is fetched separately from the BRD-writing path.</li>
+    <li>The BRD is based on structured evidence instead of one large prompt.</li>
+    <li>Validation becomes a first-class step rather than an optional improvement.</li>
+  </ul>
+
+  <h2>4. How the New Plan Works</h2>
+  <ol>
+    <li>The user submits notes, files, or source material.</li>
+    <li>The system validates the input and classifies its sensitivity.</li>
+    <li>A private model extracts structured facts, goals, roles, constraints, assumptions, and unknowns.</li>
+    <li>If the BRD needs current industry or standards information, a retrieval sidecar issues generic, sanitized queries to approved sources.</li>
+    <li>The system merges private evidence and approved current facts into a normalized requirement package.</li>
+    <li>A private BRD writer creates the first draft from structured input only.</li>
+    <li>A validator checks missing sections, unsupported claims, contradictions, and unsafe HTML.</li>
+    <li>The BRD is stored, reviewed, and exported only after passing the quality and safety gates.</li>
+  </ol>
+
+  <h2>5. What Makes This More Like a Technical Architect or Manager</h2>
+  <p>A strong technical manager or architect does not produce a BRD by simply rephrasing raw notes. A professional process usually includes:</p>
+  <ol>
+    <li>Separating facts from assumptions.</li>
+    <li>Making scope and out-of-scope explicit.</li>
+    <li>Capturing dependencies, constraints, and risks.</li>
+    <li>Defining measurable non-functional requirements.</li>
+    <li>Calling out open questions rather than hiding uncertainty.</li>
+    <li>Using current standards and domain references where needed.</li>
+  </ol>
+  <p>The proposed design mirrors that process in the system architecture.</p>
+
+  <h2>6. Old vs New</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Area</th>
+        <th>Current Architecture</th>
+        <th>Proposed Architecture</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Input handling</td>
+        <td>Direct prompt to external model</td>
+        <td>Validation, classification, evidence extraction first</td>
+      </tr>
+      <tr>
+        <td>Sensitive data</td>
+        <td>Can leave the system boundary</td>
+        <td>Private path by default; external retrieval is policy-controlled</td>
+      </tr>
+      <tr>
+        <td>Freshness of information</td>
+        <td>Model may guess or rely on stale training</td>
+        <td>Fresh information comes from controlled retrieval when needed</td>
+      </tr>
+      <tr>
+        <td>BRD generation</td>
+        <td>Single-pass narrative output</td>
+        <td>Multi-stage evidence, structuring, writing, and validation</td>
+      </tr>
+      <tr>
+        <td>Hallucination control</td>
+        <td>Mainly prompt wording</td>
+        <td>Supported-claims checks and assumptions register</td>
+      </tr>
+      <tr>
+        <td>Output safety</td>
+        <td>Returned HTML is trusted too early</td>
+        <td>Sanitized and validated before render and storage</td>
+      </tr>
+      <tr>
+        <td>Enterprise readiness</td>
+        <td>Prototype-oriented</td>
+        <td>Governance-oriented and client-defensible</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>7. Advantages</h2>
+  <h3>Security advantages</h3>
+  <ul>
+    <li>Major reduction in sensitive data exposure to third-party AI providers.</li>
+    <li>Clear policy on what can and cannot leave the environment.</li>
+    <li>Better fit for confidential client and strategic project work.</li>
+    <li>Stronger foundation for authentication, row-level security, and auditability.</li>
+  </ul>
+
+  <h3>Document quality advantages</h3>
+  <ul>
+    <li>More practical BRDs with explicit constraints, risks, and assumptions.</li>
+    <li>Better non-functional requirements, security requirements, and acceptance criteria.</li>
+    <li>Reduced hallucination due to evidence-first generation.</li>
+    <li>Improved trust for product, engineering, and client review.</li>
+  </ul>
+
+  <h3>Delivery advantages</h3>
+  <ul>
+    <li>Reusable staged architecture for future features.</li>
+    <li>Easier to evolve models and prompts without changing the whole system.</li>
+    <li>Supports later approval workflows and quality scoring.</li>
+  </ul>
+
+  <h2>8. Disadvantages and Tradeoffs</h2>
+  <ul>
+    <li>The architecture is more complex than a direct external API call.</li>
+    <li>Private inference requires infrastructure planning and model operations.</li>
+    <li>Local models may be weaker than frontier hosted models in some writing tasks.</li>
+    <li>There is more up-front engineering work and more policy design to get right.</li>
+    <li>Performance tuning becomes more important when local inference is added.</li>
+  </ul>
+
+  <div class="note">
+    <strong>Important limitation:</strong> this architecture is significantly more secure, but not perfectly secure. No serious production system should promise 100 percent security or 100 percent correctness.
+  </div>
+
+  <h2>9. Feasibility Assessment</h2>
+  <p><strong>Technical feasibility</strong><span class="pill high">High</span></p>
+  <ul>
+    <li>The current project already has API boundaries where orchestration can be introduced.</li>
+    <li>The existing AI integration can be refactored into a provider-based pipeline.</li>
+    <li>Private inference with Ollama is achievable without a full rewrite.</li>
+  </ul>
+
+  <p><strong>Security feasibility</strong><span class="pill high">High</span></p>
+  <ul>
+    <li>Stronger access controls, output sanitization, and policy routing are standard engineering practices.</li>
+    <li>The main work is disciplined implementation, not theoretical invention.</li>
+  </ul>
+
+  <p><strong>Operational feasibility</strong><span class="pill medium">Medium</span></p>
+  <ul>
+    <li>Private inference introduces infrastructure responsibility.</li>
+    <li>Latency and concurrency expectations need to be defined.</li>
+  </ul>
+
+  <p><strong>Commercial feasibility</strong><span class="pill medium">Medium to High</span></p>
+  <ul>
+    <li>The added cost is justifiable if client confidentiality and higher document quality are important differentiators.</li>
+  </ul>
+
+  <h2>10. Recommended Working Model</h2>
+  <p>The recommended operating model is controlled hybrid with private-first defaults.</p>
+  <ol>
+    <li>All client-specific and project-specific input starts in the private path.</li>
+    <li>External retrieval is disabled by default for highly sensitive work.</li>
+    <li>When external freshness is needed, only generic sanitized lookups are allowed.</li>
+    <li>The final BRD is always generated in the private path.</li>
+    <li>If the private path is unavailable for confidential work, the request should fail closed rather than falling back to an external provider.</li>
+  </ol>
+
+  <h2>11. Implementation Roadmap</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>Focus</th>
+        <th>Expected Outcome</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Phase 1</td>
+        <td>Authentication, row-level security, output sanitization, request validation</td>
+        <td>Safer baseline and stronger access controls</td>
+      </tr>
+      <tr>
+        <td>Phase 2</td>
+        <td>Provider abstraction and model routing</td>
+        <td>Clean path to hybrid operation</td>
+      </tr>
+      <tr>
+        <td>Phase 3</td>
+        <td>Evidence extraction and structured requirement packages</td>
+        <td>Reduced hallucination and higher BRD quality</td>
+      </tr>
+      <tr>
+        <td>Phase 4</td>
+        <td>Controlled external retrieval sidecar</td>
+        <td>Current information without direct exposure of sensitive input</td>
+      </tr>
+      <tr>
+        <td>Phase 5</td>
+        <td>Quality scoring, review gates, governance</td>
+        <td>Enterprise-ready reviewable workflow</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>12. How We Will Work</h2>
+  <p>The implementation should be phased and disciplined:</p>
+  <ol>
+    <li>Secure the existing foundation first.</li>
+    <li>Refactor the AI integration into independent stages.</li>
+    <li>Introduce private inference before adding external retrieval.</li>
+    <li>Add evidence extraction and validation before changing final BRD style.</li>
+    <li>Measure output quality and security posture at each phase.</li>
+  </ol>
+
+  <h3>Suggested ownership</h3>
+  <ul>
+    <li><strong>Product / BA:</strong> define required BRD template and review assumptions.</li>
+    <li><strong>Engineering Lead / Architect:</strong> define policies, target flow, and technical acceptance rules.</li>
+    <li><strong>Backend Engineer:</strong> implement routing, validators, storage, and orchestration.</li>
+    <li><strong>Security / Platform:</strong> enforce outbound controls, identity, and observability.</li>
+    <li><strong>QA:</strong> test edge cases, prompt injection resistance, and unsupported claims.</li>
+  </ul>
+
+  <h2>13. Main Risks and Mitigations</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Risk</th>
+        <th>Description</th>
+        <th>Mitigation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Indirect leakage</td>
+        <td>Poorly sanitized external queries may reveal sensitive details</td>
+        <td>Use fixed query templates, outbound filtering, and audit logs</td>
+      </tr>
+      <tr>
+        <td>Model overconfidence</td>
+        <td>Private model can still invent unsupported claims</td>
+        <td>Use evidence-first generation and supported-claims validation</td>
+      </tr>
+      <tr>
+        <td>Operational overhead</td>
+        <td>Local inference adds infra and monitoring needs</td>
+        <td>Roll out in phases with observability from the start</td>
+      </tr>
+      <tr>
+        <td>Performance constraints</td>
+        <td>Private inference may increase latency</td>
+        <td>Right-size models, batch work, cache results, and use async flows where needed</td>
+      </tr>
+      <tr>
+        <td>Weak source quality</td>
+        <td>External retrieval may return stale or low-quality references</td>
+        <td>Restrict to approved sources and record citation date</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>14. Success Criteria</h2>
+  <ol>
+    <li>Sensitive BRD inputs stay in the private inference path by default.</li>
+    <li>Unauthorized users cannot access or modify other users' records.</li>
+    <li>Generated BRDs consistently include scope, constraints, dependencies, and measurable success criteria.</li>
+    <li>Unsupported claims are flagged before final save.</li>
+    <li>Latest or current information is introduced only through controlled retrieval with traceability.</li>
+    <li>The output quality is closer to an architect-reviewed draft than a one-shot AI summary.</li>
+  </ol>
+
+  <h2>15. Recommendation</h2>
+  <p>
+    The recommended direction is to move from direct external BRD generation to a private-first hybrid architecture.
+    This is the best balance of confidentiality, quality, practicality, and enterprise readiness for the product.
+  </p>
+  <p>
+    The immediate next step should be Phase 1 and Phase 2:
+  </p>
+  <ol>
+    <li>security foundation,</li>
+    <li>provider abstraction,</li>
+    <li>and output sanitization.</li>
+  </ol>
+  <p>
+    Once that baseline is complete, the evidence-first pipeline can be added with lower implementation risk and stronger quality control.
+  </p>
+
+  <h2>16. Impact on Current Codebase</h2>
+  <ul>
+    <li><strong><code>lib/perplexity.ts</code></strong>: refactor into provider routing and staged generation services.</li>
+    <li><strong><code>app/api/generate-brd/route.ts</code></strong>: change from direct generation to orchestration entrypoint.</li>
+    <li><strong><code>app/api/generate-brd-from-file/route.ts</code></strong>: add classification, extraction, and validation flow.</li>
+    <li><strong><code>lib/supabase.ts</code></strong>: separate server-only and client-safe Supabase usage.</li>
+    <li><strong><code>components/BRDViewer.tsx</code></strong>: render only sanitized and validated HTML.</li>
+  </ul>
+
+  <p class="small">
+    Final note: the goal is not to claim impossible perfection. The goal is to produce a significantly more secure,
+    more practical, and more reviewable BRD workflow that stakeholders can trust.
+  </p>
+</body>
+</html>

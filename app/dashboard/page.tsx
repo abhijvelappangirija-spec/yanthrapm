@@ -2,11 +2,13 @@
 import { useRouter } from 'next/navigation'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import RequireAppAccess from '@/components/auth/RequireAppAccess'
+import { useAuth } from '@/components/auth/AuthProvider'
 
 export default function Dashboard() {
-  const router =  useRouter()
-  const [userEmail] = useState('abhij.velappangirija@bounteous.com')
+  const router = useRouter()
+  const { actor, user } = useAuth()
+  const identityLabel = user?.email || actor?.userId || 'Authenticated user'
 
   const tools = [
     {
@@ -60,19 +62,15 @@ export default function Dashboard() {
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <RequireAppAccess>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">AI Tools Dashboard</h1>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">{userEmail}</span>
-            <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">
-              Sign Out
-            </button>
-          </div>
+          <span className="text-sm text-gray-600">{identityLabel}</span>
         </div>
       </header>
 
@@ -146,6 +144,7 @@ export default function Dashboard() {
           ))}
         </div>
       </main>
-    </div>
+      </div>
+    </RequireAppAccess>
   )
 }

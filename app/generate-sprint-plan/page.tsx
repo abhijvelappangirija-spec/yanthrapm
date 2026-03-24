@@ -1,13 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import AiAuditSummary from '@/components/AiAuditSummary'
+import RequireAppAccess from '@/components/auth/RequireAppAccess'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import BRDViewer from '@/components/BRDViewer'
 import SprintPlanner from '@/components/SprintPlanner'
 import TechnicalContextForm from '@/components/TechnicalContextForm'
 import FileUploadZone from '@/components/FileUploadZone'
+import type { AiGenerationMetadata } from '@/lib/ai/types'
+import { fetchWithAuth } from '@/lib/auth/fetch-with-auth'
 
 type WorkflowStep = 'select-brd' | 'brd' | 'technical-context' | 'sprint-plan'
 
@@ -17,6 +21,11 @@ interface BRD {
   raw_input: string
   brd_text: string
   created_at: string
+  ai_provider?: string | null
+  ai_model?: string | null
+  ai_task?: string | null
+  ai_is_external?: boolean | null
+  ai_generated_at?: string | null
 }
 
 interface Project {
@@ -35,7 +44,7 @@ interface Project {
   }>
 }
 
-export default function GenerateSprintPlanPage() {
+function GenerateSprintPlanPageContent() {
   const searchParams = useSearchParams()
   const [brds, setBrds] = useState<BRD[]>([])
   const [selectedBrd, setSelectedBrd] = useState<BRD | null>(null)
@@ -51,6 +60,8 @@ export default function GenerateSprintPlanPage() {
   const [availableProjects, setAvailableProjects] = useState<Project[]>([])
   const [brdSource, setBrdSource] = useState<'database' | 'upload'>('database')
   const [uploadedBrdContent, setUploadedBrdContent] = useState<string>('')
+  const [uploadedBrdAiMetadata, setUploadedBrdAiMetadata] = useState<AiGenerationMetadata | null>(null)
+  const [requirePrivateProcessing, setRequirePrivateProcessing] = useState(false)
 
   useEffect(() => {
     if (brdSource === 'database') {
@@ -66,7 +77,7 @@ export default function GenerateSprintPlanPage() {
   const loadBRDs = async () => {
     try {
       setIsLoadingBrds(true)
-      const response = await fetch('/api/brds?userId=user-123')
+      const response = await fetchWithAuth('/api/brds')
       if (response.ok) {
         const data = await response.json()
         setBrds(data.brds || [])
@@ -83,7 +94,7 @@ export default function GenerateSprintPlanPage() {
 
   const loadProjects = async () => {
     try {
-      const response = await fetch('/api/projects?userId=user-123')
+      const response = await fetchWithAuth('/api/projects')
       if (response.ok) {
         const data = await response.json()
         setAvailableProjects(data.projects || [])
@@ -95,7 +106,7 @@ export default function GenerateSprintPlanPage() {
 
   const loadProject = async (projectId: string) => {
     try {
-      const response = await fetch(`/api/projects/${projectId}`)
+      const response = await fetchWithAuth(`/api/projects/${projectId}`)
       if (response.ok) {
         const data = await response.json()
         setSelectedProject(data.project)
@@ -110,7 +121,7 @@ export default function GenerateSprintPlanPage() {
     setError(null)
     try {
       // Load technical context if it exists
-      const contextResponse = await fetch(`/api/technical-context/${brd.id}`)
+      const contextResponse = await fetchWithAuth(`/api/technical-context/${brd.id}`)
       if (contextResponse.ok) {
         const contextData = await contextResponse.json()
         if (contextData.technicalContext) {
@@ -121,6 +132,7 @@ export default function GenerateSprintPlanPage() {
       setSelectedBrd(brd)
       setBrdContent(brd.brd_text)
       setBrdId(brd.id)
+      setUploadedBrdAiMetadata(null)
       setCurrentStep('brd')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load BRD')
@@ -136,7 +148,7 @@ export default function GenerateSprintPlanPage() {
     
     try {
       // Send to Perplexity to generate improved BRD
-      const response = await fetch('/api/generate-brd-from-file', {
+      const response = await fetchWithAuth('/api/generate-brd-from-file', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -144,6 +156,7 @@ export default function GenerateSprintPlanPage() {
         body: JSON.stringify({
           fileContent: content,
           useDummyData,
+          requirePrivateProcessing,
         }),
       })
 
@@ -157,11 +170,13 @@ export default function GenerateSprintPlanPage() {
       setBrdContent(data.brd)
       setSelectedBrd(null) // No database BRD selected
       setBrdId(null) // No BRD ID since it's uploaded
+      setUploadedBrdAiMetadata(data.ai || null)
       setCurrentStep('brd')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process uploaded file')
       // Fallback: use uploaded content directly if generation fails
       setBrdContent(content)
+      setUploadedBrdAiMetadata(null)
       setCurrentStep('brd')
     } finally {
       setIsLoading(false)
@@ -175,7 +190,7 @@ export default function GenerateSprintPlanPage() {
     setError(null)
     try {
       // Create a new API endpoint call to save the BRD directly
-      const response = await fetch('/api/save-brd', {
+      const response = await fetchWithAuth('/api/save-brd', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -183,7 +198,7 @@ export default function GenerateSprintPlanPage() {
         body: JSON.stringify({
           raw_input: uploadedBrdContent || brdContent.substring(0, 500), // Use first 500 chars as raw input
           brd_text: brdContent, // Save the uploaded content as BRD text
-          userId: 'user-123',
+          ai: uploadedBrdAiMetadata,
         }),
       })
 
@@ -213,7 +228,7 @@ export default function GenerateSprintPlanPage() {
     // Optionally save to database
     if (brdId) {
       try {
-        await fetch('/api/save-technical-context', {
+        await fetchWithAuth('/api/save-technical-context', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -221,7 +236,6 @@ export default function GenerateSprintPlanPage() {
           body: JSON.stringify({
             brdId,
             technicalContext: context,
-            userId: 'user-123',
           }),
         })
       } catch (err) {
@@ -244,7 +258,7 @@ export default function GenerateSprintPlanPage() {
     // Optionally update in Supabase
     if (brdId) {
       try {
-        await fetch('/api/update-brd', {
+        await fetchWithAuth('/api/update-brd', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -265,13 +279,15 @@ export default function GenerateSprintPlanPage() {
     setBrdContent(null)
     setTechnicalContext('')
     setBrdId(null)
+    setUploadedBrdAiMetadata(null)
     setError(null)
     setCurrentStep('select-brd')
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-6xl mx-auto">
+    <RequireAppAccess>
+      <main className="min-h-screen bg-gray-50 py-8 px-4">
+        <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-4xl font-bold text-gray-900">Generate Sprint Plan</h1>
@@ -385,6 +401,22 @@ export default function GenerateSprintPlanPage() {
               </label>
             </div>
 
+            <div className="flex items-center space-x-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <input
+                type="checkbox"
+                id="requirePrivateProcessing"
+                checked={requirePrivateProcessing}
+                onChange={(e) => setRequirePrivateProcessing(e.target.checked)}
+                className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+              />
+              <label
+                htmlFor="requirePrivateProcessing"
+                className="text-sm text-gray-700 cursor-pointer"
+              >
+                Sensitive input: require private/local AI processing only
+              </label>
+            </div>
+
             {/* Database Selection */}
             {brdSource === 'database' && (
               <>
@@ -427,6 +459,18 @@ export default function GenerateSprintPlanPage() {
                             <p className="text-xs text-gray-500 mt-2">
                               Created: {new Date(brd.created_at).toLocaleString()}
                             </p>
+                            <div className="mt-2">
+                              <AiAuditSummary
+                                compact
+                                ai={{
+                                  provider: brd.ai_provider,
+                                  model: brd.ai_model,
+                                  task: brd.ai_task,
+                                  isExternal: brd.ai_is_external,
+                                  generatedAt: brd.ai_generated_at,
+                                }}
+                              />
+                            </div>
                           </div>
                           <button
                             onClick={(e) => {
@@ -490,6 +534,11 @@ export default function GenerateSprintPlanPage() {
                     ⚠️ Using dummy data for testing
                   </p>
                 )}
+                {requirePrivateProcessing && (
+                  <p className="text-sm text-emerald-700 mt-1">
+                    Sensitive mode: private/local AI routing required
+                  </p>
+                )}
                 {!selectedBrd && !brdId && (
                   <p className="text-sm text-gray-600 mt-1">
                     This BRD is not saved to the database. You can save it below.
@@ -524,6 +573,19 @@ export default function GenerateSprintPlanPage() {
             <BRDViewer
               initialContent={brdContent}
               onContentChange={handleBRDContentChange}
+            />
+            <AiAuditSummary
+              ai={
+                selectedBrd
+                  ? {
+                      provider: selectedBrd.ai_provider,
+                      model: selectedBrd.ai_model,
+                      task: selectedBrd.ai_task,
+                      isExternal: selectedBrd.ai_is_external,
+                      generatedAt: selectedBrd.ai_generated_at,
+                    }
+                  : uploadedBrdAiMetadata
+              }
             />
           </div>
         )}
@@ -576,6 +638,7 @@ export default function GenerateSprintPlanPage() {
               brdId={brdId}
               technicalContext={technicalContext}
               useDummyData={useDummyData}
+              requirePrivateProcessing={requirePrivateProcessing}
               projectDefaults={selectedProject ? {
                 teamMembers: selectedProject.team_members,
                 capacityPerMember: selectedProject.capacity_per_member,
@@ -586,8 +649,16 @@ export default function GenerateSprintPlanPage() {
             />
           </div>
         )}
-      </div>
-    </main>
+        </div>
+      </main>
+    </RequireAppAccess>
   )
 }
 
+export default function GenerateSprintPlanPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <GenerateSprintPlanPageContent />
+    </Suspense>
+  )
+}

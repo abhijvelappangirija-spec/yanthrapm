@@ -26,12 +26,31 @@ npm install
 
 ### 2. Configure Environment Variables
 
-Create a `.env.local` file in the root directory:
+Copy `.env.example` to `.env.local` and replace the placeholder values:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 PERPLEXITY_API_KEY=your_perplexity_api_key
+
+# AI provider controls
+# AI_DEFAULT_PROVIDER=perplexity
+# AI_BRD_PROVIDER=ollama
+# AI_SPRINT_PROVIDER=ollama
+# AI_PRIVATE_PROVIDER=ollama
+# AI_PRIVATE_TASKS=brd,brd-from-file,sprint-plan
+# AI_EXTERNAL_DISABLED=true
+
+# Ollama (private/local inference)
+# OLLAMA_BASE_URL=http://127.0.0.1:11434
+# OLLAMA_MODEL=llama3.1:8b
+# OLLAMA_BRD_MODEL=llama3.1:8b
+# OLLAMA_SPRINT_MODEL=llama3.1:8b
+
+# Local/dev only when intentionally testing fallback mode
+# APP_ALLOW_FALLBACK_ACTOR=true
+# APP_DEFAULT_USER_ID=your_local_test_user_id
 
 # Jira Configuration
 JIRA_BASE_URL=https://your-domain.atlassian.net
@@ -115,7 +134,23 @@ CREATE TABLE technical_context (
 );
 ```
 
-### 4. Run the Development Server
+### 4. Apply Row Level Security Migration
+
+After the base tables are created, apply:
+
+`supabase/migrations/202603240001_phase1_rls.sql`
+
+This enables owner-based Row Level Security for `brds`, `projects`, `sprints`, and `technical_context`.
+
+### 5. Apply AI Metadata Migration
+
+To persist provider/model audit details for generated BRDs and sprint plans, also apply:
+
+`supabase/migrations/202603240002_phase2_ai_metadata.sql`
+
+The app is backward-compatible if this migration has not been applied yet. It will retry writes without metadata columns until the schema is updated.
+
+### 6. Run the Development Server
 
 ```bash
 npm run dev
@@ -160,16 +195,60 @@ yanthrapm/
 
 The application uses **Perplexity AI** for both BRD generation and sprint planning:
 
-- **BRD Generation**: Uses Perplexity's `llama-3.1-sonar-large-128k-online` model to generate comprehensive Business Requirements Documents from user input
+- **BRD Generation**: Uses a two-pass evidence-first pipeline for Business Requirements Documents
 - **Sprint Planning**: Uses Perplexity AI to analyze BRDs and generate user stories, epics, story points, and sprint breakdowns
 
-The integration is handled in `/lib/perplexity.ts`. You can customize the prompts and model selection in this file.
+The integration is handled across:
+
+- `lib/perplexity.ts`
+- `lib/ai/task-prompts.ts`
+- `lib/ai/brd-evidence.ts`
+
+BRD generation now works in two stages:
+
+1. extract structured evidence from the input without inventing unsupported detail,
+2. compose the final BRD HTML from that evidence.
+
+The generated BRD is then checked for required sections and evidence coverage. If the model output is structurally weak, the app falls back to a deterministic BRD rendered directly from the extracted evidence.
+
+This reduces hallucination and makes the final BRD more reviewable for technical managers and architects.
+
+### Provider Routing
+
+The app now routes generation through a provider abstraction layer:
+
+1. `lib/ai/service.ts` selects the provider through policy.
+2. `lib/ai/provider-policy.ts` enforces provider selection and external-provider restrictions.
+3. Supported providers currently are:
+   - `perplexity`
+   - `ollama`
+   - `dummy`
+
+Recommended patterns:
+
+1. Use `AI_BRD_PROVIDER=ollama` and `AI_SPRINT_PROVIDER=ollama` for private/local inference.
+2. Set `AI_EXTERNAL_DISABLED=true` to block external provider usage by policy.
+3. Keep `perplexity` available only where external calls are explicitly acceptable.
+4. Set `AI_PRIVATE_PROVIDER=ollama` and `AI_PRIVATE_TASKS=...` to force private routing for selected tasks.
+
+### Sensitive Flow Controls
+
+The BRD and sprint generation APIs support `requirePrivateProcessing=true`.
+
+When that flag is sent:
+
+1. the routing layer will not allow an external provider for that request,
+2. if the configured task provider is external, it is rerouted to `AI_PRIVATE_PROVIDER`,
+3. if the private provider is not configured correctly, the request fails closed with `503` instead of falling back to an external provider.
+
+The generation routes also perform basic server-side input classification. If the content looks restricted because it contains credential, secret, confidential, or likely PII patterns, the request is auto-routed through the private-processing policy even when the checkbox is not set.
 
 ### Customizing AI Prompts
 
-To customize the AI behavior, edit the prompts in `/lib/perplexity.ts`:
-- `generateBRDWithPerplexity()` - Modify the system and user prompts for BRD generation
-- `generateSprintPlanWithPerplexity()` - Modify the prompts for sprint planning
+To customize AI behavior:
+
+- edit `lib/ai/task-prompts.ts` for BRD evidence extraction, BRD composition, and sprint-plan prompts
+- edit `lib/perplexity.ts` and `lib/ai/providers/ollama-provider.ts` for provider-specific transport/model behavior
 
 ### Jira Integration
 
@@ -206,7 +285,28 @@ curl -u email:api_token https://your-domain.atlassian.net/rest/api/3/field
 
 ### User Authentication
 
-Currently, the app uses a hardcoded `user-123` as the user ID. Replace this with your actual authentication system to get the real user ID.
+The app now resolves the acting user on the server and client API calls can forward a real Supabase access token automatically.
+
+Current behavior:
+
+1. Browser API calls use `lib/auth/fetch-with-auth.ts` to attach the current Supabase session access token when one exists.
+2. Server routes resolve the actor from:
+   - `Authorization: Bearer <token>`
+   - supported Supabase auth cookie formats
+   - configured local fallback only when no real session is available and fallback is explicitly allowed or the app is running outside production
+3. Authenticated server routes use actor-scoped Supabase clients so Row Level Security can apply during normal signed-in requests.
+
+Verification endpoint:
+
+- `GET /api/auth/actor`
+
+This returns whether the request is authenticated and which actor source was used.
+
+Fallback policy:
+
+1. Production should rely on real Supabase sessions only.
+2. Fallback actors are disabled in production unless `APP_ALLOW_FALLBACK_ACTOR=true` is set explicitly.
+3. `APP_DEFAULT_USER_ID`, `DEMO_USER_ID`, and `DEFAULT_USER_ID` should be treated as local/dev-only values.
 
 ## Technologies Used
 
@@ -222,4 +322,3 @@ Currently, the app uses a hardcoded `user-123` as the user ID. Replace this with
 ## License
 
 MIT
-
