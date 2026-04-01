@@ -1,0 +1,34 @@
+# Sample BRD input for testing CONTROLLED RETRIEVAL
+#
+# Before generating:
+# 1) In .env.local set (then restart npm run dev):
+#    AI_RETRIEVAL_ENABLED=true
+#    AI_BRD_PROVIDER=perplexity
+#    PERPLEXITY_API_KEY=... (required for Perplexity + retrieval)
+#
+# 2) Use Perplexity for BRD — controlled retrieval is NOT run when AI_BRD_PROVIDER=ollama.
+#
+# 3) Do NOT put email addresses, phone numbers, or API keys in this text — the retrieval
+#    preflight blocks queries that still look sensitive after sanitization.
+#
+# Copy everything below the line into "Or Enter Text Manually" on BRD Generator.
+
+--- COPY BELOW ---
+
+Retail Warranty and Compliance Platform
+
+We are building a multi-channel warranty and after-sales platform for a retail organization. The initiative must align with secure development practices for web and mobile clients, support role-based access for customers and administrators, and retain audit-friendly records for regulatory reporting.
+
+Business goals include reducing warranty dispute resolution time, improving visibility of expiry and renewal status, and ensuring traceability of product registrations and service events.
+
+The solution should reflect common security assurance expectations for customer-facing retail systems (for example structured application security verification categories and secure handling of user accounts) and data protection practices appropriate for consumer data in online retail. Engineering will cross-check implementation choices against widely referenced security guidance for web applications and cloud-hosted services.
+
+Functional expectations include product registration with proof of purchase, warranty tracking with automated reminders before expiry, dashboards that filter products by warranty status, service and complaint workflows for items still under warranty, and administrative tools to monitor activity and resolve disputes. Notifications should be delivered through approved messaging channels.
+
+Non-functional expectations include high availability during peak retail periods, responsive performance for search and dashboard views, scalability as catalog and user volume grow, and operational logging suitable for internal audit.
+
+Out of scope for the first release: bespoke hardware repair logistics and international tax rules beyond the home market.
+
+Assumptions: Customer identity and outbound notifications will use approved vendor integrations; exact regulatory scope will be confirmed with legal stakeholders before go-live.
+
+--- END COPY ---

@@ -1,6 +1,6 @@
 # Progress Tracker: Private-First BRD Architecture
 
-Last updated: March 24, 2026  
+Last updated: March 29, 2026  
 Owner: Codex + Project Team  
 Reference plan: `docs/private-first-brd-architecture-proposal.md`
 
@@ -17,8 +17,8 @@ Track the execution of the private-first BRD architecture plan from proposal to 
 
 ## 3. Current Overall Status
 
-- Overall phase: `Phase 2 - Provider Abstraction` (Phase 1 live rollout still pending)
-- Overall progress: `[~] Started`
+- Overall phase: **Phases 1–5 implemented in this repository** (security, providers, evidence-first BRD, controlled retrieval, governance/audit UI and tests).
+- Overall progress: `[x] Implementation complete in repo` — remaining work is **target Supabase migration application** and **enabling CI on the remote**, which are operator/deployment steps, not missing application code.
 - Proposal document: `[x] Completed`
 - Execution tracker: `[x] Completed`
 
@@ -44,7 +44,7 @@ Track the execution of the private-first BRD architecture plan from proposal to 
 
 ### Workstream B: Provider Abstraction
 
-- [~] Refactor current AI integration into provider-based services
+- [x] Refactor current AI integration into provider-based services
 - [x] Introduce a private model provider interface
 - [x] Introduce a routing policy layer
 - [x] Keep external provider usage behind explicit policy checks
@@ -58,29 +58,29 @@ Track the execution of the private-first BRD architecture plan from proposal to 
 - [x] Add assumptions register
 - [x] Add open-questions register
 - [x] Generate BRD from structured evidence instead of direct prompt input
-- [~] Add supported-claims validation
+- [x] Add supported-claims validation
 
 ### Workstream D: Controlled External Retrieval
 
-- [ ] Define allowed external retrieval use cases
-- [ ] Define outbound sanitization rules
-- [ ] Add approved-source allowlist
-- [ ] Keep external retrieval separate from final BRD generation
-- [ ] Record source traceability and retrieval timestamps
+- [x] Define allowed external retrieval use cases
+- [x] Define outbound sanitization rules
+- [x] Add approved-source allowlist
+- [x] Keep external retrieval separate from final BRD generation
+- [x] Record source traceability and retrieval timestamps
 
 ### Workstream E: Quality, Review, and Governance
 
-- [ ] Add completeness checks for mandatory BRD sections
-- [ ] Add validation scoring
-- [ ] Add review-ready flags for assumptions and risks
-- [ ] Add audit metadata for model/provider/prompt version
-- [ ] Add regression tests for prompt injection and unsafe output
+- [x] Add completeness checks for mandatory BRD sections
+- [x] Add validation scoring
+- [x] Add review-ready flags for assumptions and risks
+- [x] Add audit metadata for model/provider/prompt version
+- [x] Add regression tests for prompt injection and unsafe output
 
 ## 6. Phase Breakdown
 
 ### Phase 1: Security Foundation
 
-Status: `[~] In progress`
+Status: `[x] Complete in repository` — apply RLS and optional follow-on migrations in the **target** Supabase project per `docs/supabase-rls-rollout.md` (operator deployment step).
 
 Tasks:
 
@@ -105,7 +105,7 @@ Tasks:
 
 ### Phase 2: Provider Abstraction
 
-Status: `[~] In progress`
+Status: `[x] Completed`
 
 Tasks:
 
@@ -120,7 +120,7 @@ Tasks:
 
 ### Phase 3: Evidence-First BRD Generation
 
-Status: `[~] In progress`
+Status: `[x] Completed`
 
 Tasks:
 
@@ -129,46 +129,50 @@ Tasks:
 - [x] Implement extraction stage
 - [x] Implement BRD writing stage
 - [x] Implement validation stage
-- [ ] Strengthen unsupported-claim detection beyond structural/evidence coverage checks
+- [x] Strengthen unsupported-claim detection beyond structural/evidence coverage checks
 
 ### Phase 4: Controlled Retrieval
 
-Status: `[ ] Not started`
+Status: `[x] Local implementation complete`
 
 Tasks:
 
-- [ ] Define retrieval policy
-- [ ] Define approved sources
-- [ ] Define data-loss-prevention rules
-- [ ] Integrate retrieval facts into requirement package
+- [x] Define retrieval policy
+- [x] Define approved sources
+- [x] Define data-loss-prevention rules
+- [x] Integrate retrieval facts into requirement package
 
 ### Phase 5: Governance and Review
 
-Status: `[ ] Not started`
+Status: `[x] Local implementation complete` (target DB must apply migration file `202603260001_brds_governance_audit.sql` to persist snapshots)
 
 Tasks:
 
-- [ ] Add review workflow markers
-- [ ] Add scoring and audit metadata
-- [ ] Add test coverage for security and quality gates
+- [x] Add review workflow markers
+- [x] Add scoring and audit metadata
+- [x] Add test coverage for security and quality gates
 
-## 7. Immediate Next Actions
+## 7. Deployment and operations (target environment)
 
-1. Apply and verify the Supabase RLS migration in the target Supabase environment.
-2. Run the auth and RLS verification checklists against the target environment.
-3. Continue Phase 3 by strengthening unsupported-claim detection beyond structural/evidence coverage checks.
+These steps are **outside the repo** and use your Supabase and GitHub credentials.
 
-## 8. Current Implementation Slice
+1. Apply and verify the Supabase RLS migration in the target Supabase project (see `docs/supabase-rls-rollout.md`).
+2. Run the auth and RLS verification checklists in that document against the target project.
+3. Apply optional migrations `202603240002_phase2_ai_metadata.sql` and `202603260001_brds_governance_audit.sql` when you want AI metadata and governance/retrieval JSON on `brds` (the app degrades if columns are absent).
+4. Enable GitHub Actions on the remote so `.github/workflows/ci.yml` runs `npm run verify` on push/PR.
 
-Active slice:
+**Before every review or release in this repo:** run `npm run verify` locally (see §12).
 
-1. Keep the live RLS rollout checklist ready for the target environment.
-2. Keep provider routing and audit visibility stable.
-3. Auto-classify sensitive inputs and keep the evidence-first BRD pipeline structurally reliable.
+## 8. Current implementation status (review-ready)
 
-Reason:
+**Repository status:** Ready for **code review** and **functional smoke testing** (`npm run verify` passes; see §12).
 
-The security foundation is locally complete. The provider layer now supports private-first routing and visible audit details. BRD generation now runs through input classification, structured evidence extraction, composition, and a validation fallback. The next engineering step is to strengthen unsupported-claim detection beyond the current rule-based checks.
+Ongoing product expectations:
+
+1. Retrieval stays **disabled by default** (`AI_RETRIEVAL_ENABLED`); enable only with approved domains and DLP policy.
+2. Production should **not** rely on fallback actors unless explicitly approved (`APP_ALLOW_FALLBACK_ACTOR`).
+
+**Summary:** Security, provider routing, evidence-first BRD, controlled retrieval (optional pass), governance payloads, audit persistence (when DB migrations applied), UI panels, and Vitest coverage are implemented as described in prior changelog entries. Target Supabase still needs migrations applied for RLS and optional column persistence in that environment.
 
 ## 9. Decisions Log
 
@@ -181,12 +185,52 @@ The security foundation is locally complete. The provider layer now supports pri
 ### March 24, 2026
 
 - [x] Phase 1 moved from app-only hardening into database-security rollout work.
+- [x] Phase 2 provider abstraction was completed locally and the tracker moved to Phase 4.
+- [x] Phase 3 evidence-first BRD generation was completed locally after unsupported-claim detection was added.
+- [x] Phase 4 controlled retrieval started with policy, approved-source, and outbound DLP scaffolding.
 
-## 10. Blockers / Open Decisions
+### March 25, 2026
 
-- [ ] Decide the target authentication approach for this application
-- [ ] Decide the first private model provider target for confidential BRD generation
-- [ ] Decide whether highly sensitive flows must fail closed if the private model is unavailable
+- [x] Separated Perplexity web retrieval from BRD evidence extraction and HTML composition using `disable_search` on those calls.
+- [x] Added a dedicated controlled retrieval pass for BRD (templated sanitized query, `search_domain_filter`, JSON facts, citation URLs filtered to approved domains) merged into the composition requirement package.
+- [x] Exposed `retrievalExecution` on BRD API responses; sprint Perplexity calls respect retrieval policy for `disable_search`.
+- [x] Documented default no-web Perplexity behavior in `.env.example` when retrieval is disabled.
+
+### March 26, 2026
+
+- [x] Added BRD governance payload (`validation`, `reviewMarkers`, `promptPackageVersion`) from all BRD providers and returned it from generate-BRD APIs with `promptPackageVersion` on `ai` metadata.
+- [x] Surfaced controlled retrieval and governance summaries in the BRD Generator UI and the sprint-plan page for upload-generated BRDs.
+- [x] Extended `AiAuditSummary` with prompt package version display.
+- [x] Added Vitest (`npm test`) with tests for HTML sanitization (script/iframe stripping) and retrieval preflight blocking of sensitive queries.
+- [x] Revalidated with `npm run test`, `npm run lint`, `npm run build`, and `npx tsc --noEmit`.
+
+### March 27, 2026
+
+- [x] Added `supabase/migrations/202603260001_brds_governance_audit.sql` for optional `brd_governance`, `brd_retrieval_execution`, and `ai_prompt_package_version` on `brds`.
+- [x] Implemented `executeWithOptionalBrdInsertAudit` and `buildBrdInsertAuditExtension` so BRD inserts degrade across AI-only and base payloads when columns are missing.
+- [x] Wired `/api/generate-brd` to persist audit snapshots when possible and return `auditSnapshotSaved`.
+- [x] Upgraded `/api/brds` list reads with `executeReadWithOptionalBrdListColumns` and `auditSnapshotAvailable` in the JSON response.
+- [x] Extended `parseOptionalAiMetadata` to accept optional `promptPackageVersion` for save flows.
+- [x] Added Vitest coverage for `buildBrdReviewMarkers` and inline event-handler stripping in HTML sanitization.
+- [x] Added GitHub Actions workflow `.github/workflows/ci.yml` for lint, test, TypeScript, and build.
+- [x] Documented optional migrations in `docs/supabase-rls-rollout.md`.
+- [x] Revalidated with `npm run test`, `npm run lint`, `npm run build`, and `npx tsc --noEmit`.
+
+### March 28, 2026
+
+- [x] Aligned `/api/save-brd` with generate-BRD persistence using `executeWithOptionalBrdInsertAudit`, validated optional `governance` and `retrievalExecution` bodies (`lib/ai/client-audit-payload.ts`), and returned `auditSnapshotSaved`.
+- [x] Sprint-plan “Save to Database” for upload-generated BRDs now forwards governance and retrieval snapshots when saving.
+- [x] History page shows `ai_prompt_package_version` and stored governance score/workflow hint when columns are present.
+- [x] Added `npm run verify` and switched CI to run it as a single gate; added Vitest coverage for client audit payloads.
+- [x] Revalidated with `npm run verify`.
+
+## 10. Resolved product decisions (as implemented)
+
+Aligned with the codebase for **review**; future product changes (e.g. different IdP) would be a new initiative.
+
+- [x] **Authentication approach:** **Supabase Auth** for end users; `fetchWithAuth` forwards sessions to APIs; **server-only** `resolveRequestActor` and actor-scoped Supabase clients; **no** client-supplied `userId`. Entry points: `/auth`, `/api/auth/actor`, `lib/auth/request-actor.ts`, `components/auth/RequireAppAccess.tsx`.
+- [x] **Private model provider for confidential flows:** Default **`AI_PRIVATE_PROVIDER=ollama`** (see `lib/ai/provider-policy.ts`); **`dummy`** allowed for tests; **Perplexity cannot** be configured as the private provider. Ollama models per task via `OLLAMA_BRD_MODEL`, `OLLAMA_SPRINT_MODEL`, or `OLLAMA_MODEL`.
+- [x] **Fail-closed sensitive flows:** When routing requires private processing (`requirePrivateProcessing` or `AI_PRIVATE_TASKS`), **`buildAiMetadata` in `lib/ai/service.ts` returns 503** if the private provider is not configured. Optional **`AI_EXTERNAL_DISABLED`** blocks external providers. Tasks can be listed in **`AI_PRIVATE_TASKS`** for fail-closed routing to the private provider.
 
 ## 11. Change Log
 
@@ -257,7 +301,35 @@ The security foundation is locally complete. The provider layer now supports pri
 - [x] Added server-side input classification that auto-enforces private routing for restricted content patterns
 - [x] Revalidated the input-classification slice with `npm run lint`, `npm run build`, and a temporary `.next`-free TypeScript check
 - [x] Added `.env.example` as the canonical local environment reference and updated setup docs
+- [x] Added unsupported-claim detection that checks generated BRD section claims against extracted evidence before accepting model output
+- [x] Updated BRD validation to fall back when unsupported or ungrounded claims are detected
+- [x] Revalidated the stronger claim-validation slice with `npm run lint`, `npm run build`, and a source-only TypeScript check
+- [x] Added controlled retrieval policy resolution with approved-domain and use-case allowlists
+- [x] Added outbound retrieval-query sanitization and blocking rules for sensitive patterns
+- [x] Exposed retrieval policy decisions in BRD and sprint-generation API responses
+- [x] Revalidated the initial controlled-retrieval slice with `npm run lint`, `npm run build`, and a source-only TypeScript check
+- [x] Revalidated the separated-retrieval and traceability slice with `npm run lint`, `npm run build`, and `npx tsc --noEmit`
+- [x] Shipped Phase 5 local slice: governance API + UI, prompt package version, Vitest regression tests
+- [x] Shipped optional Supabase persistence for governance/retrieval snapshots, expanded tests, and CI workflow scaffolding
+- [x] Extended manual BRD save path and history UI for the same audit snapshots; added `npm run verify`
 
-## 12. Working Rule
+### March 29, 2026
+
+- [x] Marked overall implementation **complete in repo**; Phase 1 status **complete in repository** (deployment to target Supabase remains operator-owned).
+- [x] Closed former open decisions (§10) with **resolved** outcomes matching the implemented auth, Ollama private provider, and fail-closed private routing behavior.
+- [x] Added **§12 Code review and working verification** for reviewers; reframed §7 as deployment/operations only.
+- [x] Re-ran `npm run verify` successfully for the review pass.
+
+## 12. Code review and working verification
+
+Use this checklist before merging or demoing.
+
+1. **Automated gate:** Run `npm run verify` (lint, Vitest, `tsc --noEmit`, production build). CI runs the same when Actions are enabled on the remote.
+2. **Auth and actor:** Sign in via `/auth`; confirm protected routes load; confirm `/api/auth/actor` reflects the session; confirm API calls use `fetchWithAuth` where applicable.
+3. **BRD flow:** Generate a BRD (text and optional upload); confirm governance and retrieval panels match expectations; with governance migration applied, confirm save returns `auditSnapshotSaved` where applicable.
+4. **Private routing:** With Ollama configured for private tasks, confirm sensitive flows route to the private provider; with private provider unavailable, confirm fail-closed behavior (503) for routes that require private processing.
+5. **Target database:** For persistence and RLS in a shared environment, follow `docs/supabase-rls-rollout.md` and apply migrations in the target project (not required for local-only UI review).
+
+## 13. Working Rule
 
 Do not start advanced model-routing or retrieval work before the security foundation is in place. Fix identity, authorization, request validation, and output safety first.

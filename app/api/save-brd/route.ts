@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { PostgrestError } from '@supabase/supabase-js'
 
 import {
-  buildAiMetadataColumns,
-  executeWithOptionalAiMetadata,
+  parseOptionalBrdGovernancePayload,
+  parseOptionalRetrievalExecutionPayload,
+} from '@/lib/ai/client-audit-payload'
+import { emptyRetrievalExecutionMeta } from '@/lib/ai/brd-retrieval'
+import {
+  buildBrdInsertAuditExtension,
+  executeWithOptionalBrdInsertAudit,
   parseOptionalAiMetadata,
 } from '@/lib/ai/persistence'
 import { ActorResolutionError, resolveRequestActor } from '@/lib/auth/request-actor'
@@ -29,7 +35,14 @@ export async function POST(request: NextRequest) {
       trim: false,
     })
     const sanitizedBrdText = sanitizeRichTextHtml(brdText)
-    const ai = parseOptionalAiMetadata(payload)
+    let ai = parseOptionalAiMetadata(payload)
+    const governance = parseOptionalBrdGovernancePayload(payload)
+    const retrievalFromClient = parseOptionalRetrievalExecutionPayload(payload)
+
+    if (ai && governance?.promptPackageVersion && !ai.promptPackageVersion) {
+      ai = { ...ai, promptPackageVersion: governance.promptPackageVersion }
+    }
+
     const supabase = createActorScopedSupabaseClient(request)
 
     const insertPayload = {
@@ -39,25 +52,44 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString(),
     }
 
-    const { data, error, aiMetadataSaved } = ai
-      ? await executeWithOptionalAiMetadata<{ id: string }>((includeAiMetadata) =>
+    const retrievalExecution = retrievalFromClient ?? emptyRetrievalExecutionMeta()
+
+    let data: { id: string } | null = null
+    let error: PostgrestError | null = null
+    let aiMetadataSaved = false
+    let auditSnapshotSaved = false
+
+    if (ai) {
+      const result = await executeWithOptionalBrdInsertAudit<{ id: string }>(
+        (includeAiMetadata, includeAuditSnapshot) =>
           supabase
             .from('brds')
             .insert({
               ...insertPayload,
-              ...(includeAiMetadata ? buildAiMetadataColumns(ai) : {}),
+              ...buildBrdInsertAuditExtension({
+                includeAiMetadata,
+                includeAuditSnapshot,
+                ai,
+                governance,
+                retrievalExecution,
+              }),
             })
             .select()
             .single()
-        )
-      : {
-          ...(await supabase
-            .from('brds')
-            .insert(insertPayload)
-            .select()
-            .single()),
-          aiMetadataSaved: false,
-        }
+      )
+      data = result.data
+      error = result.error
+      aiMetadataSaved = result.aiMetadataSaved
+      auditSnapshotSaved = result.auditSnapshotSaved
+    } else {
+      const result = await supabase
+        .from('brds')
+        .insert(insertPayload)
+        .select()
+        .single()
+      data = result.data
+      error = result.error
+    }
 
     if (error) {
       console.error('Supabase error:', error)
@@ -87,6 +119,7 @@ export async function POST(request: NextRequest) {
       id: data.id,
       brd: data,
       aiMetadataSaved,
+      auditSnapshotSaved,
     })
   } catch (error) {
     if (

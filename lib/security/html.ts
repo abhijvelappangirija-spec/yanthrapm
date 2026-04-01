@@ -21,6 +21,8 @@ const ALLOWED_SIMPLE_TAGS = [
   'p',
   'div',
   'span',
+  'section',
+  'article',
   'h1',
   'h2',
   'h3',

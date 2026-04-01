@@ -4,6 +4,12 @@ import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import AiAuditSummary from '@/components/AiAuditSummary'
+import BrdGovernanceSummary, {
+  type BrdGovernanceSummaryProps,
+} from '@/components/BrdGovernanceSummary'
+import RetrievalExecutionSummary, {
+  type RetrievalExecutionSummaryProps,
+} from '@/components/RetrievalExecutionSummary'
 import RequireAppAccess from '@/components/auth/RequireAppAccess'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import BRDViewer from '@/components/BRDViewer'
@@ -12,6 +18,7 @@ import TechnicalContextForm from '@/components/TechnicalContextForm'
 import FileUploadZone from '@/components/FileUploadZone'
 import type { AiGenerationMetadata } from '@/lib/ai/types'
 import { fetchWithAuth } from '@/lib/auth/fetch-with-auth'
+import { formatClientApiErrorMessage } from '@/lib/format-client-api-error'
 
 type WorkflowStep = 'select-brd' | 'brd' | 'technical-context' | 'sprint-plan'
 
@@ -61,6 +68,11 @@ function GenerateSprintPlanPageContent() {
   const [brdSource, setBrdSource] = useState<'database' | 'upload'>('database')
   const [uploadedBrdContent, setUploadedBrdContent] = useState<string>('')
   const [uploadedBrdAiMetadata, setUploadedBrdAiMetadata] = useState<AiGenerationMetadata | null>(null)
+  const [uploadedRetrievalExecution, setUploadedRetrievalExecution] = useState<
+    RetrievalExecutionSummaryProps['execution']
+  >(null)
+  const [uploadedBrdGovernance, setUploadedBrdGovernance] =
+    useState<BrdGovernanceSummaryProps['governance']>(null)
   const [requirePrivateProcessing, setRequirePrivateProcessing] = useState(false)
 
   useEffect(() => {
@@ -133,6 +145,8 @@ function GenerateSprintPlanPageContent() {
       setBrdContent(brd.brd_text)
       setBrdId(brd.id)
       setUploadedBrdAiMetadata(null)
+      setUploadedRetrievalExecution(null)
+      setUploadedBrdGovernance(null)
       setCurrentStep('brd')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load BRD')
@@ -163,7 +177,7 @@ function GenerateSprintPlanPageContent() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate BRD from file')
+        throw new Error(formatClientApiErrorMessage(data, 'Failed to generate BRD from file'))
       }
 
       // Use the generated BRD
@@ -171,12 +185,16 @@ function GenerateSprintPlanPageContent() {
       setSelectedBrd(null) // No database BRD selected
       setBrdId(null) // No BRD ID since it's uploaded
       setUploadedBrdAiMetadata(data.ai || null)
+      setUploadedRetrievalExecution(data.retrievalExecution ?? null)
+      setUploadedBrdGovernance(data.governance ?? null)
       setCurrentStep('brd')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process uploaded file')
       // Fallback: use uploaded content directly if generation fails
       setBrdContent(content)
       setUploadedBrdAiMetadata(null)
+      setUploadedRetrievalExecution(null)
+      setUploadedBrdGovernance(null)
       setCurrentStep('brd')
     } finally {
       setIsLoading(false)
@@ -199,6 +217,8 @@ function GenerateSprintPlanPageContent() {
           raw_input: uploadedBrdContent || brdContent.substring(0, 500), // Use first 500 chars as raw input
           brd_text: brdContent, // Save the uploaded content as BRD text
           ai: uploadedBrdAiMetadata,
+          governance: uploadedBrdGovernance,
+          retrievalExecution: uploadedRetrievalExecution,
         }),
       })
 
@@ -280,6 +300,9 @@ function GenerateSprintPlanPageContent() {
     setTechnicalContext('')
     setBrdId(null)
     setUploadedBrdAiMetadata(null)
+    setUploadedRetrievalExecution(null)
+    setUploadedBrdGovernance(null)
+    setUploadedBrdContent('')
     setError(null)
     setCurrentStep('select-brd')
   }
@@ -397,7 +420,7 @@ function GenerateSprintPlanPageContent() {
                 className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
               />
               <label htmlFor="useDummyData" className="text-sm text-gray-700 cursor-pointer">
-                Use dummy data for testing (saves Perplexity API tokens)
+                Use dummy data only (skips Perplexity/Ollama — for quick UI checks without API keys)
               </label>
             </div>
 
@@ -570,10 +593,6 @@ function GenerateSprintPlanPageContent() {
               </div>
             </div>
 
-            <BRDViewer
-              initialContent={brdContent}
-              onContentChange={handleBRDContentChange}
-            />
             <AiAuditSummary
               ai={
                 selectedBrd
@@ -586,6 +605,16 @@ function GenerateSprintPlanPageContent() {
                     }
                   : uploadedBrdAiMetadata
               }
+            />
+            {!selectedBrd && (
+              <>
+                <RetrievalExecutionSummary execution={uploadedRetrievalExecution} />
+                <BrdGovernanceSummary governance={uploadedBrdGovernance} />
+              </>
+            )}
+            <BRDViewer
+              initialContent={brdContent}
+              onContentChange={handleBRDContentChange}
             />
           </div>
         )}

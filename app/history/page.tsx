@@ -16,6 +16,11 @@ type BRDRecord = {
   ai_task?: string | null
   ai_is_external?: boolean | null
   ai_generated_at?: string | null
+  ai_prompt_package_version?: string | null
+  brd_governance?: {
+    validation?: { score?: number }
+    reviewMarkers?: { recommendedWorkflowStatus?: string }
+  } | null
 }
 
 export default function HistoryPage() {
@@ -87,7 +92,7 @@ export default function HistoryPage() {
                   <span className="block brd-name-clamp">
                     {brd.raw_input || brd.projectName || 'Untitled'}
                   </span>
-                  <div className="mt-2">
+                  <div className="mt-2 space-y-1">
                     <AiAuditSummary
                       compact
                       ai={{
@@ -96,8 +101,20 @@ export default function HistoryPage() {
                         task: brd.ai_task,
                         isExternal: brd.ai_is_external,
                         generatedAt: brd.ai_generated_at,
+                        promptPackageVersion: brd.ai_prompt_package_version,
                       }}
                     />
+                    {brd.brd_governance?.validation?.score != null && (
+                      <p className="text-xs text-slate-600">
+                        Stored quality score: {brd.brd_governance.validation.score}
+                        {brd.brd_governance.reviewMarkers?.recommendedWorkflowStatus
+                          ? ` · ${brd.brd_governance.reviewMarkers.recommendedWorkflowStatus.replace(
+                              /-/g,
+                              ' '
+                            )}`
+                          : ''}
+                      </p>
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-2 border-b">

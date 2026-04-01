@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { classifyAiInput } from '@/lib/ai/input-classification'
 import { AiGenerationMetadata } from '@/lib/ai/types'
 import { AiPolicyError } from '@/lib/ai/provider-policy'
+import { resolveRetrievalPolicy } from '@/lib/ai/retrieval-policy'
 import {
   buildAiMetadataColumns,
   executeWithOptionalAiMetadata,
@@ -15,6 +16,7 @@ import {
   requireObjectPayload,
 } from '@/lib/security/request-validation'
 import {
+  getOptionalDevErrorCause,
   getPublicServiceErrorMessage,
   isConnectivityError,
 } from '@/lib/service-errors'
@@ -67,6 +69,11 @@ export async function POST(request: NextRequest) {
     )
     const effectiveRequirePrivateProcessing =
       requirePrivateProcessing || classification.requirePrivateProcessing
+    const retrievalPolicy = resolveRetrievalPolicy({
+      task: 'sprint-plan',
+      classification,
+      requirePrivateProcessing: effectiveRequirePrivateProcessing,
+    })
 
     const {
       ai,
@@ -84,6 +91,7 @@ export async function POST(request: NextRequest) {
         resources,
         useDummyData,
         requirePrivateProcessing: effectiveRequirePrivateProcessing,
+        retrievalPolicy,
       })
 
     if (!sprintPlan.storyGroups || !Array.isArray(sprintPlan.storyGroups)) {
@@ -178,6 +186,7 @@ export async function POST(request: NextRequest) {
       ai,
       aiMetadataSaved,
       classification,
+      retrievalPolicy,
     })
   } catch (error) {
     if (
@@ -194,9 +203,11 @@ export async function POST(request: NextRequest) {
     console.error('Error generating sprint plan:', error)
 
     if (isConnectivityError(error)) {
+      const cause = getOptionalDevErrorCause(error)
       return NextResponse.json(
         {
           error: `${getPublicServiceErrorMessage('AI provider', error)} Enable dummy data for local testing or fix the network/TLS configuration.`,
+          ...(cause ? { cause } : {}),
         },
         { status: 503 }
       )

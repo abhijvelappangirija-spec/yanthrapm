@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { executeReadWithOptionalAiMetadata } from '@/lib/ai/persistence'
+import { executeReadWithOptionalBrdListColumns } from '@/lib/ai/persistence'
 import { ActorResolutionError, resolveRequestActor } from '@/lib/auth/request-actor'
 import {
   getPublicServiceErrorMessage,
@@ -15,15 +15,11 @@ export async function GET(request: NextRequest) {
     const actor = await resolveRequestActor(request)
     const supabase = createActorScopedSupabaseClient(request)
 
-    const { data, error, aiMetadataAvailable } =
-      await executeReadWithOptionalAiMetadata((includeAiMetadata) =>
+    const { data, error, aiMetadataAvailable, auditSnapshotAvailable } =
+      await executeReadWithOptionalBrdListColumns((selectList) =>
         supabase
           .from('brds')
-          .select(
-            includeAiMetadata
-              ? 'id, user_id, raw_input, brd_text, created_at, ai_provider, ai_model, ai_task, ai_is_external, ai_generated_at'
-              : 'id, user_id, raw_input, brd_text, created_at'
-          )
+          .select(selectList)
           .eq('user_id', actor.userId)
           .order('created_at', { ascending: false })
       )
@@ -36,6 +32,8 @@ export async function GET(request: NextRequest) {
           success: true,
           brds: [],
           storageAvailable: false,
+          aiMetadataAvailable: false,
+          auditSnapshotAvailable: false,
           warning: getPublicServiceErrorMessage('Supabase storage', error),
         })
       }
@@ -50,6 +48,7 @@ export async function GET(request: NextRequest) {
       success: true,
       brds: data || [],
       aiMetadataAvailable,
+      auditSnapshotAvailable,
     })
   } catch (error) {
     if (error instanceof ActorResolutionError) {
@@ -66,6 +65,8 @@ export async function GET(request: NextRequest) {
         success: true,
         brds: [],
         storageAvailable: false,
+        aiMetadataAvailable: false,
+        auditSnapshotAvailable: false,
         warning: getPublicServiceErrorMessage('Supabase storage', error),
       })
     }

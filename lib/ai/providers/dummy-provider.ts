@@ -1,8 +1,11 @@
+import { buildBrdGovernancePayload } from '@/lib/ai/brd-governance'
+import { emptyRetrievalExecutionMeta } from '@/lib/ai/brd-retrieval'
 import { AiProvider } from '@/lib/ai/types'
 import {
   buildDummyBrdEvidence,
   renderBrdHtmlFromEvidence,
 } from '@/lib/ai/brd-evidence'
+import { finalizeBrdHtml } from '@/lib/ai/brd-validator'
 import { generateDummySprintPlan } from '@/lib/perplexity'
 
 export const dummyAiProvider: AiProvider = {
@@ -14,13 +17,25 @@ export const dummyAiProvider: AiProvider = {
   },
 
   async generateBRD(content) {
-    return renderBrdHtmlFromEvidence(buildDummyBrdEvidence(content, 'input'))
+    const evidence = buildDummyBrdEvidence(content, 'input')
+    const composedHtml = renderBrdHtmlFromEvidence(evidence)
+    const finalized = finalizeBrdHtml(composedHtml, evidence)
+    return {
+      content: finalized.html,
+      retrievalExecution: emptyRetrievalExecutionMeta(),
+      governance: buildBrdGovernancePayload(evidence, finalized.validation),
+    }
   },
 
   async generateBRDFromFile(fileContent) {
-    return renderBrdHtmlFromEvidence(
-      buildDummyBrdEvidence(fileContent, 'existing-brd')
-    )
+    const evidence = buildDummyBrdEvidence(fileContent, 'existing-brd')
+    const composedHtml = renderBrdHtmlFromEvidence(evidence)
+    const finalized = finalizeBrdHtml(composedHtml, evidence)
+    return {
+      content: finalized.html,
+      retrievalExecution: emptyRetrievalExecutionMeta(),
+      governance: buildBrdGovernancePayload(evidence, finalized.validation),
+    }
   },
 
   async generateSprintPlan(input) {

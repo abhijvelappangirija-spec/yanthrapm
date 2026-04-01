@@ -4,6 +4,12 @@ import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import AiAuditSummary from '@/components/AiAuditSummary'
+import BrdGovernanceSummary, {
+  type BrdGovernanceSummaryProps,
+} from '@/components/BrdGovernanceSummary'
+import RetrievalExecutionSummary, {
+  type RetrievalExecutionSummaryProps,
+} from '@/components/RetrievalExecutionSummary'
 import RequireAppAccess from '@/components/auth/RequireAppAccess'
 import FileUploadZone from '@/components/FileUploadZone'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -12,6 +18,7 @@ import SprintPlanner from '@/components/SprintPlanner'
 import TechnicalContextForm from '@/components/TechnicalContextForm'
 import { generateBRDPDF } from '@/components/BRDPDF'
 import { fetchWithAuth } from '@/lib/auth/fetch-with-auth'
+import { formatClientApiErrorMessage } from '@/lib/format-client-api-error'
 import type { AiGenerationMetadata } from '@/lib/ai/types'
 
 type WorkflowStep = 'input' | 'brd' | 'technical-context' | 'sprint-plan'
@@ -36,6 +43,11 @@ function BRDGeneratorPageContent() {
   const [error, setError] = useState<string | null>(null)
   const [brdId, setBrdId] = useState<string | null>(null)
   const [brdAiMetadata, setBrdAiMetadata] = useState<AiGenerationMetadata | null>(null)
+  const [brdRetrievalExecution, setBrdRetrievalExecution] = useState<
+    RetrievalExecutionSummaryProps['execution']
+  >(null)
+  const [brdGovernance, setBrdGovernance] =
+    useState<BrdGovernanceSummaryProps['governance']>(null)
   const [useDummyData, setUseDummyData] = useState(false)
   const [requirePrivateProcessing, setRequirePrivateProcessing] = useState(false)
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
@@ -110,12 +122,14 @@ function BRDGeneratorPageContent() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate BRD')
+        throw new Error(formatClientApiErrorMessage(data, 'Failed to generate BRD'))
       }
 
       setBrdContent(data.brd)
       setBrdId(data.id)
       setBrdAiMetadata(data.ai || null)
+      setBrdRetrievalExecution(data.retrievalExecution ?? null)
+      setBrdGovernance(data.governance ?? null)
       setCurrentStep('technical-context')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -293,7 +307,7 @@ function BRDGeneratorPageContent() {
                 className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
               />
               <label htmlFor="useDummyData" className="text-sm text-gray-700 cursor-pointer">
-                Use dummy data for testing (saves Perplexity API tokens)
+                Use dummy data only (skips Perplexity/Ollama — for quick UI checks without API keys)
               </label>
             </div>
 
@@ -350,6 +364,8 @@ function BRDGeneratorPageContent() {
             </div>
 
             <AiAuditSummary ai={brdAiMetadata} />
+            <RetrievalExecutionSummary execution={brdRetrievalExecution} />
+            <BrdGovernanceSummary governance={brdGovernance} />
 
             <BRDViewer
               initialContent={brdContent}
@@ -363,6 +379,8 @@ function BRDGeneratorPageContent() {
                 setTechnicalContext('')
                 setBrdId(null)
                 setBrdAiMetadata(null)
+                setBrdRetrievalExecution(null)
+                setBrdGovernance(null)
                 setError(null)
                 setCurrentStep('input')
               }}

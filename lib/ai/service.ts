@@ -1,12 +1,17 @@
+import { BRD_PROMPT_PACKAGE_VERSION } from '@/lib/ai/brd-pipeline-version'
+import type { BrdGovernancePayload } from '@/lib/ai/brd-governance'
 import { AiPolicyError, resolveAiRoutingDecision } from '@/lib/ai/provider-policy'
 import { dummyAiProvider } from '@/lib/ai/providers/dummy-provider'
 import { ollamaAiProvider } from '@/lib/ai/providers/ollama-provider'
 import { perplexityAiProvider } from '@/lib/ai/providers/perplexity-provider'
+import type { BrdProviderResult } from '@/lib/ai/brd-retrieval'
+import { emptyRetrievalExecutionMeta } from '@/lib/ai/brd-retrieval'
 import {
   AiGenerationMetadata,
   AiProvider,
   AiProviderName,
   AiTask,
+  BrdGenerationOptions,
   SprintPlan,
 } from '@/lib/ai/types'
 
@@ -55,22 +60,41 @@ export async function generateBRDWithPolicy(input: {
   content: string
   useDummyData?: boolean
   requirePrivateProcessing?: boolean
-}): Promise<{ ai: AiGenerationMetadata; content: string }> {
+  retrievalPolicy?: BrdGenerationOptions['retrievalPolicy']
+}): Promise<{
+  ai: AiGenerationMetadata
+  content: string
+  retrievalExecution: BrdProviderResult['retrievalExecution']
+  governance: BrdGovernancePayload | null
+}> {
   const routingDecision = resolveAiRoutingDecision({
     task: 'brd',
     useDummyData: input.useDummyData,
     requirePrivateProcessing: input.requirePrivateProcessing,
   })
   const provider = getProvider(routingDecision.provider)
+  const options: BrdGenerationOptions | undefined = input.retrievalPolicy
+    ? { retrievalPolicy: input.retrievalPolicy }
+    : undefined
+  const brdResult = await provider.generateBRD(input.content, options)
+  const governance = brdResult.governance ?? null
+  const baseAi = buildAiMetadata(
+    provider,
+    'brd',
+    routingDecision.reason,
+    routingDecision.requiresPrivateProcessing
+  )
 
   return {
-    ai: buildAiMetadata(
-      provider,
-      'brd',
-      routingDecision.reason,
-      routingDecision.requiresPrivateProcessing
-    ),
-    content: await provider.generateBRD(input.content),
+    ai: {
+      ...baseAi,
+      promptPackageVersion:
+        governance?.promptPackageVersion ?? BRD_PROMPT_PACKAGE_VERSION,
+    },
+    content: brdResult.content,
+    retrievalExecution:
+      brdResult.retrievalExecution ?? emptyRetrievalExecutionMeta(),
+    governance,
   }
 }
 
@@ -78,22 +102,41 @@ export async function generateBRDFromFileWithPolicy(input: {
   fileContent: string
   useDummyData?: boolean
   requirePrivateProcessing?: boolean
-}): Promise<{ ai: AiGenerationMetadata; content: string }> {
+  retrievalPolicy?: BrdGenerationOptions['retrievalPolicy']
+}): Promise<{
+  ai: AiGenerationMetadata
+  content: string
+  retrievalExecution: BrdProviderResult['retrievalExecution']
+  governance: BrdGovernancePayload | null
+}> {
   const routingDecision = resolveAiRoutingDecision({
     task: 'brd-from-file',
     useDummyData: input.useDummyData,
     requirePrivateProcessing: input.requirePrivateProcessing,
   })
   const provider = getProvider(routingDecision.provider)
+  const options: BrdGenerationOptions | undefined = input.retrievalPolicy
+    ? { retrievalPolicy: input.retrievalPolicy }
+    : undefined
+  const brdResult = await provider.generateBRDFromFile(input.fileContent, options)
+  const governance = brdResult.governance ?? null
+  const baseAi = buildAiMetadata(
+    provider,
+    'brd-from-file',
+    routingDecision.reason,
+    routingDecision.requiresPrivateProcessing
+  )
 
   return {
-    ai: buildAiMetadata(
-      provider,
-      'brd-from-file',
-      routingDecision.reason,
-      routingDecision.requiresPrivateProcessing
-    ),
-    content: await provider.generateBRDFromFile(input.fileContent),
+    ai: {
+      ...baseAi,
+      promptPackageVersion:
+        governance?.promptPackageVersion ?? BRD_PROMPT_PACKAGE_VERSION,
+    },
+    content: brdResult.content,
+    retrievalExecution:
+      brdResult.retrievalExecution ?? emptyRetrievalExecutionMeta(),
+    governance,
   }
 }
 
@@ -112,6 +155,7 @@ export async function generateSprintPlanWithPolicy(input: {
   }>
   useDummyData?: boolean
   requirePrivateProcessing?: boolean
+  retrievalPolicy?: BrdGenerationOptions['retrievalPolicy']
 }): Promise<{ ai: AiGenerationMetadata; sprintPlan: SprintPlan }> {
   const routingDecision = resolveAiRoutingDecision({
     task: 'sprint-plan',
@@ -127,6 +171,15 @@ export async function generateSprintPlanWithPolicy(input: {
       routingDecision.reason,
       routingDecision.requiresPrivateProcessing
     ),
-    sprintPlan: await provider.generateSprintPlan(input),
+    sprintPlan: await provider.generateSprintPlan({
+      brdText: input.brdText,
+      technicalContext: input.technicalContext,
+      teamMembers: input.teamMembers,
+      capacityPerMember: input.capacityPerMember,
+      sprintDuration: input.sprintDuration,
+      velocity: input.velocity,
+      resources: input.resources,
+      retrievalPolicy: input.retrievalPolicy,
+    }),
   }
 }

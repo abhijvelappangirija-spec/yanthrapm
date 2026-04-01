@@ -1,4 +1,5 @@
 import { BrdEvidence } from '@/lib/ai/brd-evidence'
+import { BrdExternalRetrievalSnapshot } from '@/lib/ai/brd-retrieval'
 import { generateSprintPlanPrompt } from '@/lib/prompts/sprintPlan'
 
 function truncateContent(content: string, maxLength: number): string {
@@ -38,6 +39,11 @@ Rules:
 - If something appears likely but is not explicitly supported, place it in assumptions or openQuestions instead of facts.
 - Keep business language practical and implementation-oriented.
 - Functional requirements must be actionable and specific enough for engineering planning.
+- Enterprise coverage: when the text states qualities (e.g. secure, scalable, user-friendly, available, performant), map them to nonFunctionalRequirements with the closest category (Security, Scalability, Usability, Availability, Performance, etc.) and a concrete requirement string quoted from or paraphrased from the source.
+- businessObjectives: derive outcome-oriented objectives from goals, outcomes, and success language in the narrative (not generic placeholders).
+- successCriteria: derive testable or measurable criteria when the source implies them (e.g. reminders before expiry, dashboard visibility, admin oversight); otherwise use openQuestions.
+- outOfScope: only when the source implies boundaries; if unclear, prefer openQuestions over guessing.
+- Capture explicit channels (web, mobile), audiences (consumers, small businesses), and admin/support roles when stated.
 
 Return this exact JSON shape:
 {
@@ -83,7 +89,8 @@ ${contentToAnalyze}`,
 }
 
 export async function buildBRDCompositionPrompt(
-  evidence: BrdEvidence
+  evidence: BrdEvidence,
+  externalRetrieval?: BrdExternalRetrievalSnapshot
 ): Promise<{
   systemPrompt: string
   userPrompt: string
@@ -91,18 +98,20 @@ export async function buildBRDCompositionPrompt(
   return {
     systemPrompt: `You are a principal business analyst writing an implementation-ready Business Requirements Document.
 
-Use only the provided evidence JSON.
+Use only the provided evidence JSON and optional external reference facts JSON.
 
 Rules:
 - Output valid HTML only.
 - Do not include markdown, backticks, or commentary.
 - Start with <html> and end with </html>.
-- Use semantic HTML headings and lists.
-- Do not invent new facts, integrations, metrics, or commitments not present in the evidence.
+- Use semantic HTML: <section> wrappers are allowed; each major section MUST begin with an <h2> whose visible text matches EXACTLY one of the required titles below (same spelling and casing as listed). Do not use plain text or <h3> alone for those titles.
+- Within each section use <p>, <ul>/<li>, and <h3> for subheadings (e.g. "In Scope" under Scope). For functional requirements use <article> per requirement with <h3> for the FR id/title, <p> for description, and <ul>/<li> for acceptance criteria.
+- Do not invent new facts, integrations, metrics, or commitments beyond the evidence and external reference facts.
+- Treat external reference facts as third-party reference material, not as confirmed customer requirements; integrate them only where they clarify standards, controls, or product context.
 - If evidence is incomplete, present it as an assumption, constraint, or open question instead of fabricating detail.
-- The BRD must be practical enough for a technical manager or architect to review for delivery planning.
+- Write in a professional enterprise tone: concrete, traceable to the evidence, suitable for architecture and delivery planning.
 
-Required sections:
+Required section headings (each must be the full text inside <h2>...</h2>):
 1. Executive Summary
 2. Stakeholders and Personas
 3. Business Objectives
@@ -114,9 +123,25 @@ Required sections:
 9. Assumptions and Constraints
 10. Success Criteria
 11. Open Questions`,
-    userPrompt: `Generate the BRD strictly from this evidence JSON:
+    userPrompt: `Generate the BRD strictly from this requirement package.
 
-${JSON.stringify(evidence, null, 2)}`,
+Evidence JSON (from user-provided input):
+${JSON.stringify(evidence, null, 2)}
+
+External reference facts JSON (from a prior controlled retrieval pass; may be empty):
+${JSON.stringify(
+      externalRetrieval
+        ? {
+            retrievedAt: externalRetrieval.retrievedAt,
+            useCase: externalRetrieval.useCase,
+            sanitizedQuery: externalRetrieval.sanitizedQuery,
+            facts: externalRetrieval.facts,
+            sources: externalRetrieval.sources,
+          }
+        : null,
+      null,
+      2
+    )}`,
   }
 }
 

@@ -3,9 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateBRDWithPolicy } from '@/lib/ai/service'
 import { classifyAiInput } from '@/lib/ai/input-classification'
 import { AiPolicyError } from '@/lib/ai/provider-policy'
+import { resolveRetrievalPolicy } from '@/lib/ai/retrieval-policy'
 import {
-  buildAiMetadataColumns,
-  executeWithOptionalAiMetadata,
+  buildBrdInsertAuditExtension,
+  executeWithOptionalBrdInsertAudit,
 } from '@/lib/ai/persistence'
 import { ActorResolutionError, resolveRequestActor } from '@/lib/auth/request-actor'
 import { sanitizeGeneratedHtml } from '@/lib/security/html'
@@ -16,6 +17,7 @@ import {
   requireObjectPayload,
 } from '@/lib/security/request-validation'
 import {
+  getOptionalDevErrorCause,
   getPublicServiceErrorMessage,
   isConnectivityError,
 } from '@/lib/service-errors'
@@ -35,11 +37,18 @@ export async function POST(request: NextRequest) {
     const classification = classifyAiInput(content)
     const effectiveRequirePrivateProcessing =
       requirePrivateProcessing || classification.requirePrivateProcessing
+    const retrievalPolicy = resolveRetrievalPolicy({
+      task: 'brd',
+      classification,
+      requirePrivateProcessing: effectiveRequirePrivateProcessing,
+    })
 
-    const { content: brdText, ai } = await generateBRDWithPolicy({
+    const { content: brdText, ai, retrievalExecution, governance } =
+      await generateBRDWithPolicy({
       content,
       useDummyData,
       requirePrivateProcessing: effectiveRequirePrivateProcessing,
+      retrievalPolicy,
     })
 
     const sanitizedBrdText = sanitizeGeneratedHtml(brdText)
@@ -49,6 +58,7 @@ export async function POST(request: NextRequest) {
     let savedId: string | null = null
     let warning: string | null = null
     let aiMetadataSaved = false
+    let auditSnapshotSaved = false
 
     try {
       const insertPayload = {
@@ -58,19 +68,31 @@ export async function POST(request: NextRequest) {
         created_at: new Date().toISOString(),
       }
 
-      const { data, error, aiMetadataSaved: metadataPersisted } =
-        await executeWithOptionalAiMetadata<{ id: string }>((includeAiMetadata) =>
+      const {
+        data,
+        error,
+        aiMetadataSaved: metadataPersisted,
+        auditSnapshotSaved: auditPersisted,
+      } = await executeWithOptionalBrdInsertAudit<{ id: string }>(
+        (includeAiMetadata, includeAuditSnapshot) =>
           supabase
             .from('brds')
             .insert({
               ...insertPayload,
-              ...(includeAiMetadata ? buildAiMetadataColumns(ai) : {}),
+              ...buildBrdInsertAuditExtension({
+                includeAiMetadata,
+                includeAuditSnapshot,
+                ai,
+                governance,
+                retrievalExecution,
+              }),
             })
             .select()
             .single()
-        )
+      )
 
       aiMetadataSaved = metadataPersisted
+      auditSnapshotSaved = auditPersisted
 
       if (error) {
         console.error('Supabase error:', error)
@@ -95,7 +117,11 @@ export async function POST(request: NextRequest) {
       provider: ai.provider,
       ai,
       aiMetadataSaved,
+      auditSnapshotSaved,
       classification,
+      retrievalPolicy,
+      retrievalExecution,
+      governance,
     })
   } catch (error) {
     if (
@@ -112,9 +138,11 @@ export async function POST(request: NextRequest) {
     console.error('Error generating BRD:', error)
 
     if (isConnectivityError(error)) {
+      const cause = getOptionalDevErrorCause(error)
       return NextResponse.json(
         {
           error: `${getPublicServiceErrorMessage('AI provider', error)} Enable dummy data for local testing or fix the network/TLS configuration.`,
+          ...(cause ? { cause } : {}),
         },
         { status: 503 }
       )

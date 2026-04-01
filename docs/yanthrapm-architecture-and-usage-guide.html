@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Yanthra PM — Architecture, BRD pipeline, usage guide</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --border: #30363d;
+      --code-bg: #21262d;
+      --diagram-box: #21262d;
+      --diagram-accent: #388bfd;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      line-height: 1.55;
+      max-width: 56rem;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 3rem;
+      background: var(--bg);
+      color: var(--text);
+    }
+    h1 { font-size: 1.65rem; margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    h2 { font-size: 1.2rem; margin-top: 2.25rem; color: var(--accent); scroll-margin-top: 0.75rem; }
+    h3 { font-size: 1.05rem; margin-top: 1.35rem; color: #c9d1d9; }
+    h4 { font-size: 0.95rem; margin-top: 1rem; color: #8b949e; }
+    p, li { color: #c9d1d9; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    a { color: var(--accent); }
+    code, .env {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      padding: 0.12em 0.35em;
+      border-radius: 4px;
+    }
+    pre.env-block {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+      overflow-x: auto;
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    .callout {
+      border-left: 4px solid var(--warn);
+      background: var(--panel);
+      padding: 0.85rem 1rem;
+      margin: 1rem 0;
+      border-radius: 0 8px 8px 0;
+    }
+    .callout.ok { border-left-color: var(--ok); }
+    .callout strong { color: #f0f6fc; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin: 0.75rem 0; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.65rem; text-align: left; vertical-align: top; }
+    th { background: var(--panel); color: #c9d1d9; }
+    nav.toc { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 2rem; columns: 2; column-gap: 2rem; }
+    nav.toc > strong { column-span: all; display: block; margin-bottom: 0.35rem; }
+    nav.toc ul { margin: 0; padding-left: 1.2rem; }
+    nav.toc li { margin: 0.2rem 0; break-inside: avoid; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+    ul.compact li { margin: 0.35rem 0; }
+    ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+    ol.steps > li {
+      counter-increment: step;
+      position: relative;
+      padding-left: 2.5rem;
+      margin: 0.85rem 0;
+    }
+    ol.steps > li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1.75rem;
+      height: 1.75rem;
+      background: var(--diagram-accent);
+      color: #fff;
+      border-radius: 50%;
+      font-size: 0.85rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .diagram-wrap {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      margin: 1.25rem 0;
+      overflow-x: auto;
+    }
+    .diagram-wrap svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+    .diagram-caption { font-size: 0.85rem; color: var(--muted); margin-top: 0.75rem; text-align: center; }
+    .flow-legend { font-size: 0.82rem; color: var(--muted); margin-top: 0.5rem; }
+    kbd { font-family: inherit; background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; border: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+
+  <p class="muted">Companion to <code>progress.md</code> · Last updated: March 29, 2026</p>
+  <h1>Yanthra PM — Architecture, BRD pipeline, and usage</h1>
+  <p class="muted">End-to-end guide: how BRD generation works in code and in the UI, how to configure Supabase and AI providers, controlled (external) retrieval, governance panels, and deployment checks.</p>
+
+  <nav class="toc" aria-label="Table of contents">
+    <strong>Contents</strong>
+    <ul>
+      <li><a href="#brd-steps">Step-by-step: generate a BRD (user)</a></li>
+      <li><a href="#diagram-request">Diagram: request path (browser → API)</a></li>
+      <li><a href="#diagram-brd">Diagram: BRD generation pipeline</a></li>
+      <li><a href="#diagram-retrieval">Diagram: controlled retrieval decision</a></li>
+      <li><a href="#features-ui">UI features after generation</a></li>
+      <li><a href="#external-retrieval">Controlled / external retrieval (full detail)</a></li>
+      <li><a href="#governance">Governance and validation</a></li>
+      <li><a href="#providers">AI providers and routing</a></li>
+      <li><a href="#key-files">Key source files</a></li>
+      <li><a href="#how-it-works">System overview</a></li>
+      <li><a href="#how-to-use">Local setup summary</a></li>
+      <li><a href="#env-table">Environment variables</a></li>
+      <li><a href="#phases">Phases and workstreams</a></li>
+      <li><a href="#decisions">Resolved decisions</a></li>
+      <li><a href="#deployment">Deployment</a></li>
+      <li><a href="#verify">Verification checklist</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+    </ul>
+  </nav>
+
+  <h2 id="brd-steps">Step-by-step: how to generate a BRD (complete user flow)</h2>
+  <ol class="steps">
+    <li><strong>Environment:</strong> Copy <code>.env.example</code> to <code>.env.local</code>. Set Supabase (<code>NEXT_PUBLIC_SUPABASE_URL</code>, <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>), and AI keys/routing (see <a href="#env-table">environment table</a>). Restart the dev server after any change.</li>
+    <li><strong>Start the app:</strong> Run <code>npm install</code> then <code>npm run dev</code>. Open <code>http://localhost:3000</code> (or your port).</li>
+    <li><strong>Sign in:</strong> Go to <code>/auth</code>, sign in with Supabase. Protected pages require a session; APIs receive the token via <code>fetchWithAuth</code>.</li>
+    <li><strong>Open BRD Generator:</strong> From the dashboard, open the BRD Generator page.</li>
+    <li><strong>Input:</strong> Either upload a supported file (txt, md, doc, etc.) or paste requirements under <strong>Or Enter Text Manually</strong>. Optionally pick a project for sprint defaults.</li>
+    <li><strong>Options:</strong>
+      <ul>
+        <li><strong>Use dummy data only</strong> — skips real Perplexity/Ollama calls (good for UI-only testing).</li>
+        <li><strong>Sensitive input: require private/local AI processing only</strong> — forces private routing when policy applies (typically Ollama); do not use with content that triggers “restricted” classification unless you intend private processing.</li>
+      </ul>
+    </li>
+    <li><strong>Generate:</strong> Click <strong>Generate BRD</strong>. The client calls <code>POST /api/generate-brd</code> with JSON <code>{ content, useDummyData, requirePrivateProcessing }</code>.</li>
+    <li><strong>Review panels:</strong> Read <a href="#features-ui">AI routing</a>, <a href="#external-retrieval">Controlled retrieval</a>, and <a href="#governance">BRD quality / governance</a> sections below.</li>
+    <li><strong>Iterate:</strong> Use <strong>Edit</strong> on the BRD body if needed; continue to technical context and sprint planning when ready.</li>
+    <li><strong>Export:</strong> Use <strong>Download BRD (PDF)</strong> when available.</li>
+  </ol>
+
+  <h2 id="diagram-request">Diagram: HTTP request path (sign-in → generate BRD)</h2>
+  <div class="diagram-wrap" role="img" aria-label="Flow from browser to database">
+    <svg viewBox="0 0 520 200" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,Segoe UI,sans-serif" font-size="11">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="#8b949e"/></marker>
+      </defs>
+      <rect x="10" y="20" width="100" height="44" rx="6" fill="#21262d" stroke="#388bfd"/>
+      <text x="60" y="38" text-anchor="middle" fill="#e6edf3" font-weight="600">Browser</text>
+      <text x="60" y="52" text-anchor="middle" fill="#8b949e" font-size="9">React + Supabase session</text>
+      <line x1="110" y1="42" x2="138" y2="42" stroke="#8b949e" stroke-width="2" marker-end="url(#arr)"/>
+      <rect x="140" y="20" width="110" height="44" rx="6" fill="#21262d" stroke="#388bfd"/>
+      <text x="195" y="38" text-anchor="middle" fill="#e6edf3" font-weight="600">fetchWithAuth</text>
+      <text x="195" y="52" text-anchor="middle" fill="#8b949e" font-size="9">Authorization: Bearer …</text>
+      <line x1="250" y1="42" x2="278" y2="42" stroke="#8b949e" stroke-width="2" marker-end="url(#arr)"/>
+      <rect x="280" y="20" width="120" height="44" rx="6" fill="#21262d" stroke="#a371f7"/>
+      <text x="340" y="38" text-anchor="middle" fill="#e6edf3" font-weight="600">POST /api/generate-brd</text>
+      <text x="340" y="52" text-anchor="middle" fill="#8b949e" font-size="9">Next.js App Router</text>
+      <line x1="340" y1="64" x2="340" y2="88" stroke="#8b949e" stroke-width="2" marker-end="url(#arr)"/>
+      <rect x="230" y="90" width="220" height="50" rx="6" fill="#21262d" stroke="#3fb950"/>
+      <text x="340" y="108" text-anchor="middle" fill="#e6edf3" font-weight="600">resolveRequestActor → userId</text>
+      <text x="340" y="124" text-anchor="middle" fill="#8b949e" font-size="9">Supabase auth.getUser(accessToken)</text>
+      <line x1="340" y1="140" x2="340" y2="158" stroke="#8b949e" stroke-width="2" marker-end="url(#arr)"/>
+      <rect x="200" y="160" width="280" height="36" rx="6" fill="#21262d" stroke="#d29922"/>
+      <text x="340" y="182" text-anchor="middle" fill="#e6edf3" font-weight="600">BRD pipeline (see next diagram) → optional Supabase insert → JSON response</text>
+    </svg>
+    <p class="diagram-caption">The server never trusts a client-supplied user id; the actor comes from the validated session token.</p>
+  </div>
+
+  <h2 id="diagram-brd">Diagram: BRD generation pipeline (server-side)</h2>
+  <p>This is the logical order inside <code>app/api/generate-brd/route.ts</code> and the selected AI provider. Paths differ slightly for <strong>Perplexity</strong> vs <strong>Ollama</strong> vs <strong>dummy</strong>.</p>
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 440 720" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,Segoe UI,sans-serif" font-size="10">
+      <defs>
+        <marker id="a2" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0 0, 7 3.5, 0 7" fill="#8b949e"/></marker>
+      </defs>
+      <text x="220" y="16" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="700">BRD generation pipeline</text>
+      <g stroke="#30363d" stroke-width="1">
+        <rect x="40" y="28" width="360" height="36" rx="6" fill="#21262d"/>
+        <text x="220" y="50" text-anchor="middle" fill="#e6edf3">1. Parse body: content, useDummyData, requirePrivateProcessing</text>
+        <rect x="40" y="72" width="360" height="36" rx="6" fill="#21262d"/>
+        <text x="220" y="94" text-anchor="middle" fill="#e6edf3">2. classifyAiInput(content) → standard / restricted</text>
+        <rect x="40" y="116" width="360" height="36" rx="6" fill="#21262d"/>
+        <text x="220" y="138" text-anchor="middle" fill="#e6edf3">3. resolveRetrievalPolicy({ task: brd, classification, requirePrivateProcessing })</text>
+        <rect x="40" y="160" width="360" height="36" rx="6" fill="#21262d"/>
+        <text x="220" y="182" text-anchor="middle" fill="#e6edf3">4. resolveAiRoutingDecision({ task: brd, useDummyData, requirePrivateProcessing })</text>
+        <rect x="40" y="204" width="360" height="50" rx="6" fill="#1f3d2d" stroke="#3fb950"/>
+        <text x="220" y="224" text-anchor="middle" fill="#e6edf3" font-weight="600">5. Provider branch</text>
+        <text x="220" y="240" text-anchor="middle" fill="#8b949e" font-size="9">Perplexity · Ollama · dummy</text>
+        <rect x="40" y="264" width="360" height="44" rx="6" fill="#21262d"/>
+        <text x="220" y="282" text-anchor="middle" fill="#e6edf3">6a. Evidence extraction (LLM → JSON → BrdEvidence)</text>
+        <text x="220" y="296" text-anchor="middle" fill="#8b949e" font-size="9">Perplexity/Ollama: task prompts in lib/ai/task-prompts.ts · dummy: synthetic evidence</text>
+        <rect x="40" y="316" width="360" height="44" rx="6" fill="#2d2a1f" stroke="#d29922"/>
+        <text x="220" y="334" text-anchor="middle" fill="#e6edf3">6b. Controlled retrieval (optional)</text>
+        <text x="220" y="348" text-anchor="middle" fill="#8b949e" font-size="9">Only if policy.enabled AND AI_BRD_PROVIDER=perplexity · Perplexity + search_domain_filter</text>
+        <rect x="40" y="368" width="360" height="36" rx="6" fill="#21262d"/>
+        <text x="220" y="390" text-anchor="middle" fill="#e6edf3">7. Composition (LLM → HTML BRD) · Perplexity uses disable_search here</text>
+        <rect x="40" y="412" width="360" height="44" rx="6" fill="#21262d"/>
+        <text x="220" y="430" text-anchor="middle" fill="#e6edf3">8. finalizeBrdHtml(html, evidence)</text>
+        <text x="220" y="444" text-anchor="middle" fill="#8b949e" font-size="9">validate · unsupported claims · optional fallback to renderBrdHtmlFromEvidence</text>
+        <rect x="40" y="464" width="360" height="36" rx="6" fill="#21262d"/>
+        <text x="220" y="486" text-anchor="middle" fill="#e6edf3">9. sanitizeGeneratedHtml → buildBrdGovernancePayload</text>
+        <rect x="40" y="508" width="360" height="44" rx="6" fill="#21262d"/>
+        <text x="220" y="526" text-anchor="middle" fill="#e6edf3">10. insert into Supabase brds (actor-scoped)</text>
+        <text x="220" y="540" text-anchor="middle" fill="#8b949e" font-size="9">optional AI metadata + governance/retrieval JSON if migrations applied</text>
+        <rect x="40" y="562" width="360" height="50" rx="6" fill="#1a2332" stroke="#58a6ff"/>
+        <text x="220" y="582" text-anchor="middle" fill="#e6edf3" font-weight="600">11. Response JSON</text>
+        <text x="220" y="598" text-anchor="middle" fill="#8b949e" font-size="9">brd, ai, governance, retrievalExecution, retrievalPolicy, classification, saved, …</text>
+      </g>
+    </svg>
+    <p class="diagram-caption">Ollama skips step 6b entirely (retrieval execution stays “not performed”). Dummy skips real LLM calls and uses local templates.</p>
+  </div>
+
+  <h2 id="diagram-retrieval">Diagram: when controlled retrieval runs or skips</h2>
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 480 340" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,Segoe UI,sans-serif" font-size="10">
+      <rect x="160" y="10" width="160" height="32" rx="6" fill="#21262d" stroke="#58a6ff"/>
+      <text x="240" y="30" text-anchor="middle" fill="#e6edf3" font-weight="600">AI_RETRIEVAL_ENABLED?</text>
+      <text x="240" y="52" text-anchor="middle" fill="#8b949e" font-size="9">resolveRetrievalPolicy</text>
+      <line x1="240" y1="42" x2="240" y2="58" stroke="#8b949e" stroke-width="1.5"/>
+      <line x1="240" y1="58" x2="80" y2="58" stroke="#8b949e" stroke-width="1.5"/>
+      <line x1="240" y1="58" x2="400" y2="58" stroke="#8b949e" stroke-width="1.5"/>
+      <text x="80" y="72" text-anchor="middle" fill="#f85149" font-size="9">No / false</text>
+      <text x="400" y="72" text-anchor="middle" fill="#3fb950" font-size="9">Yes</text>
+      <rect x="20" y="78" width="120" height="40" rx="6" fill="#21262d"/>
+      <text x="80" y="96" text-anchor="middle" fill="#e6edf3">Not used</text>
+      <text x="80" y="108" text-anchor="middle" fill="#8b949e" font-size="8">env policy</text>
+      <rect x="300" y="78" width="160" height="36" rx="6" fill="#21262d"/>
+      <text x="380" y="100" text-anchor="middle" fill="#e6edf3">Restricted input?</text>
+      <line x1="380" y1="114" x2="380" y2="130" stroke="#8b949e"/>
+      <line x1="380" y1="130" x2="280" y2="130" stroke="#8b949e"/>
+      <line x1="380" y1="130" x2="480" y2="130" stroke="#8b949e"/>
+      <text x="270" y="144" text-anchor="middle" fill="#f85149" font-size="9">Yes, no ALLOW</text>
+      <text x="470" y="144" text-anchor="middle" fill="#3fb950" font-size="9">OK or ALLOW_RESTRICTED</text>
+      <rect x="200" y="150" width="120" height="36" rx="6" fill="#21262d"/>
+      <text x="260" y="172" text-anchor="middle" fill="#e6edf3">Skip retrieval</text>
+      <rect x="340" y="150" width="130" height="50" rx="6" fill="#1f3d2d" stroke="#3fb950"/>
+      <text x="405" y="170" text-anchor="middle" fill="#e6edf3">BRD = perplexity?</text>
+      <text x="405" y="186" text-anchor="middle" fill="#8b949e" font-size="8">else no HTTP pass</text>
+      <rect x="300" y="210" width="180" height="44" rx="6" fill="#21262d"/>
+      <text x="390" y="228" text-anchor="middle" fill="#e6edf3">Preflight query (sanitized)</text>
+      <text x="390" y="242" text-anchor="middle" fill="#8b949e" font-size="8">buildTemplatedRetrievalQuery</text>
+      <rect x="300" y="264" width="180" height="44" rx="6" fill="#21262d"/>
+      <text x="390" y="282" text-anchor="middle" fill="#e6edf3">Perplexity + domain filter</text>
+      <text x="390" y="296" text-anchor="middle" fill="#8b949e" font-size="8">facts JSON → composition package</text>
+      <rect x="300" y="316" width="180" height="24" rx="6" fill="#21262d"/>
+      <text x="390" y="332" text-anchor="middle" fill="#e6edf3" font-size="9">UI: retrievalExecution</text>
+    </svg>
+    <p class="diagram-caption">“Restricted” input uses <code>classifyAiInput</code> (e.g. email, phone, secret-like tokens). Override with <code>AI_RETRIEVAL_ALLOW_RESTRICTED=true</code> only when policy allows.</p>
+  </div>
+
+  <h2 id="features-ui">UI features after BRD generation (what each block means)</h2>
+  <table>
+    <thead><tr><th>UI block</th><th>What it shows</th><th>Source in API / code</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>AI routing details</strong></td>
+        <td>Provider (perplexity / ollama / dummy), internal vs external, task, routing reason, model name, timestamp, <strong>prompt package version</strong> (audit).</td>
+        <td>Response field <code>ai</code> from <code>lib/ai/service.ts</code> / providers.</td>
+      </tr>
+      <tr>
+        <td><strong>Controlled retrieval</strong></td>
+        <td>Whether a <em>dedicated</em> web retrieval pass ran, use case, sanitized query snippet, facts count, approved sources, or <strong>skip reason</strong> (e.g. env disabled, preflight blocked, no facts).</td>
+        <td><code>retrievalExecution</code>, <code>retrievalPolicy</code> from route; built in <code>lib/ai/brd-retrieval.ts</code>, <code>lib/perplexity.ts</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>BRD quality and review</strong></td>
+        <td>Validation score, missing sections, unsupported claims, “fallback HTML applied”, workflow hint (e.g. Draft vs Internal review), assumptions/risks/open questions flags.</td>
+        <td><code>governance</code> from <code>lib/ai/brd-governance.ts</code>; validation from <code>lib/ai/brd-validator.ts</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>BRD document + Edit</strong></td>
+        <td>Sanitized HTML body; editable before sprint steps.</td>
+        <td><code>sanitizeGeneratedHtml</code> in <code>lib/security/html.ts</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>Download BRD (PDF)</strong></td>
+        <td>Client-side PDF from current HTML.</td>
+        <td><code>components/BRDPDF.tsx</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="external-retrieval">Controlled / external retrieval — full detail</h2>
+  <p><strong>Purpose:</strong> One optional Perplexity call with <strong>search restricted to approved domains</strong>, returning structured <strong>facts</strong> (and filtered citations). Those facts are passed into the <strong>composition</strong> step as reference material only — not as confirmed customer requirements.</p>
+  <ul class="compact">
+    <li><strong>Enable:</strong> <code>AI_RETRIEVAL_ENABLED=true</code> in <code>.env.local</code>. Restart <code>npm run dev</code>.</li>
+    <li><strong>Domains:</strong> <code>AI_RETRIEVAL_APPROVED_DOMAINS</code> (comma-separated). If unset, defaults include e.g. owasp.org, nist.gov, cisa.gov, ietf.org, developer.atlassian.com, supabase.com, docs.ollama.com (see <code>lib/ai/retrieval-policy.ts</code>).</li>
+    <li><strong>Use cases:</strong> <code>AI_RETRIEVAL_ALLOWED_USE_CASES</code> — e.g. <code>industry-standards</code>, <code>compliance-controls</code>, <code>technology-docs</code>, <code>integration-docs</code>. The implementation picks the first allowed case in priority order (<code>lib/perplexity.ts</code>).</li>
+    <li><strong>Perplexity-only on BRD:</strong> The retrieval HTTP call lives in the Perplexity BRD path. Set <code>AI_BRD_PROVIDER=perplexity</code> to test it on Generate BRD.</li>
+    <li><strong>Composition vs retrieval:</strong> Evidence extraction and final BRD composition use <code>disable_search</code> on Perplexity so general browsing is not mixed in; only the dedicated pass uses domain-filtered search when enabled.</li>
+    <li><strong>Sample input:</strong> <code>docs/sample-brd-input-controlled-retrieval.txt</code> (avoid emails/phones in text so preflight does not block).</li>
+  </ul>
+  <div class="callout">
+    <strong>Why the UI still says “Not used”:</strong> Any of: retrieval disabled in env; input restricted without <code>AI_RETRIEVAL_ALLOW_RESTRICTED</code>; BRD provider is Ollama; preflight failed (query too short, sensitive pattern); Perplexity returned no parseable <code>facts</code> JSON.
+  </div>
+
+  <h2 id="governance">Governance and validation</h2>
+  <ul class="compact">
+    <li><strong>Evidence-first:</strong> The model fills a structured <code>BrdEvidence</code> object before writing prose, to reduce invention.</li>
+    <li><strong>Post-compose validation:</strong> <code>validateBrdHtml</code> checks required section titles, grounding of claims vs evidence, and produces a <strong>score</strong>.</li>
+    <li><strong>Fallback HTML:</strong> If validation fails strict thresholds, <code>finalizeBrdHtml</code> may replace the model HTML with <code>renderBrdHtmlFromEvidence</code> (template) — you may see generic placeholder lines where evidence fields were empty.</li>
+    <li><strong>Prompt package version:</strong> Bumped when prompts change (<code>lib/ai/brd-pipeline-version.ts</code>); shown in UI for audit.</li>
+    <li><strong>Persistence:</strong> Optional Supabase columns can store governance and retrieval snapshots; see migration <code>202603260001_brds_governance_audit.sql</code> and <code>docs/supabase-rls-rollout.md</code>.</li>
+  </ul>
+
+  <h2 id="providers">AI providers and routing</h2>
+  <table>
+    <thead><tr><th>Control</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td><code>useDummyData</code> (checkbox)</td><td>Forces provider <code>dummy</code> — no external API calls for that request.</td></tr>
+      <tr><td><code>AI_DEFAULT_PROVIDER</code></td><td>Default when no task override.</td></tr>
+      <tr><td><code>AI_BRD_PROVIDER</code> / <code>AI_SPRINT_PROVIDER</code></td><td>Override per task: perplexity, ollama, dummy.</td></tr>
+      <tr><td><code>AI_PRIVATE_TASKS</code> + <code>requirePrivateProcessing</code></td><td>Sensitive tasks route to <code>AI_PRIVATE_PROVIDER</code> (ollama or dummy, not perplexity).</td></tr>
+      <tr><td><code>AI_EXTERNAL_DISABLED</code></td><td>Blocks external providers when policy would select Perplexity.</td></tr>
+      <tr><td><code>PERPLEXITY_API_KEY</code></td><td>Required for Perplexity routes.</td></tr>
+      <tr><td><code>OLLAMA_*</code></td><td>Base URL and model names for Ollama; daemon must be running.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="key-files">Key source files (map)</h2>
+  <table>
+    <thead><tr><th>Area</th><th>Files</th></tr></thead>
+    <tbody>
+      <tr><td>API entry</td><td><code>app/api/generate-brd/route.ts</code>, <code>app/api/generate-brd-from-file/route.ts</code></td></tr>
+      <tr><td>Orchestration</td><td><code>lib/ai/service.ts</code>, <code>lib/perplexity.ts</code></td></tr>
+      <tr><td>Prompts</td><td><code>lib/ai/task-prompts.ts</code></td></tr>
+      <tr><td>Policy</td><td><code>lib/ai/provider-policy.ts</code>, <code>lib/ai/retrieval-policy.ts</code>, <code>lib/ai/input-classification.ts</code></td></tr>
+      <tr><td>Retrieval</td><td><code>lib/ai/brd-retrieval.ts</code>, <code>lib/ai/retrieval-sanitization.ts</code></td></tr>
+      <tr><td>Evidence / template</td><td><code>lib/ai/brd-evidence.ts</code></td></tr>
+      <tr><td>Validation</td><td><code>lib/ai/brd-validator.ts</code></td></tr>
+      <tr><td>Governance</td><td><code>lib/ai/brd-governance.ts</code></td></tr>
+      <tr><td>Auth</td><td><code>lib/auth/request-actor.ts</code>, <code>lib/auth/fetch-with-auth.ts</code></td></tr>
+      <tr><td>HTML safety</td><td><code>lib/security/html.ts</code></td></tr>
+      <tr><td>UI</td><td><code>app/brd-generator/page.tsx</code>, <code>components/BrdGovernanceSummary.tsx</code>, <code>components/RetrievalExecutionSummary.tsx</code>, <code>components/AiAuditSummary.tsx</code></td></tr>
+    </tbody>
+  </table>
+
+  <hr />
+
+  <h2 id="how-it-works">How the system works (concise overview)</h2>
+  <ul class="compact">
+    <li><strong>Identity:</strong> Supabase Auth; server resolves actor from JWT; actor-scoped Supabase for RLS.</li>
+    <li><strong>BRD:</strong> Classify → policies → extract evidence → optional controlled retrieval (Perplexity) → compose HTML → validate → sanitize → governance → save.</li>
+    <li><strong>Sprint plan:</strong> Similar provider layer with sprint-specific prompts and routes.</li>
+  </ul>
+
+  <h2 id="how-to-use">Local setup (short checklist)</h2>
+  <ol>
+    <li><code>.env.local</code> from <code>.env.example</code> with Supabase + AI variables.</li>
+    <li><code>npm run dev</code> after env changes.</li>
+    <li>Sign in at <code>/auth</code>.</li>
+    <li>For retrieval testing: <code>AI_RETRIEVAL_ENABLED=true</code> and <code>AI_BRD_PROVIDER=perplexity</code>.</li>
+    <li><code>npm run verify</code> before release (lint, tests, tsc, build).</li>
+  </ol>
+
+  <h2 id="env-table">Environment variables (reference)</h2>
+  <table>
+    <thead><tr><th>Variable</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><code>NEXT_PUBLIC_SUPABASE_URL</code>, <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code></td><td>Supabase client (browser + server)</td></tr>
+      <tr><td><code>SUPABASE_SERVICE_ROLE_KEY</code></td><td>Server-only; see rollout docs</td></tr>
+      <tr><td><code>AI_DEFAULT_PROVIDER</code>, <code>AI_BRD_PROVIDER</code>, <code>AI_SPRINT_PROVIDER</code></td><td>perplexity | ollama | dummy</td></tr>
+      <tr><td><code>PERPLEXITY_API_KEY</code></td><td>Perplexity API</td></tr>
+      <tr><td><code>OLLAMA_BASE_URL</code>, <code>OLLAMA_BRD_MODEL</code>, <code>OLLAMA_SPRINT_MODEL</code>, <code>OLLAMA_MODEL</code></td><td>Ollama</td></tr>
+      <tr><td><code>AI_RETRIEVAL_ENABLED</code></td><td>Controlled external retrieval on/off</td></tr>
+      <tr><td><code>AI_RETRIEVAL_APPROVED_DOMAINS</code>, <code>AI_RETRIEVAL_ALLOWED_USE_CASES</code></td><td>Retrieval allowlists</td></tr>
+      <tr><td><code>AI_RETRIEVAL_ALLOW_RESTRICTED</code></td><td>Allow retrieval for restricted-classified input</td></tr>
+      <tr><td><code>AI_PRIVATE_PROVIDER</code>, <code>AI_PRIVATE_TASKS</code></td><td>Private routing</td></tr>
+      <tr><td><code>AI_EXTERNAL_DISABLED</code></td><td>Block external AI</td></tr>
+      <tr><td><code>APP_ALLOW_FALLBACK_ACTOR</code></td><td>Non-prod actor fallback (dangerous in production)</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="phases">Phases and workstreams (from progress.md)</h2>
+  <p class="muted">Phases 1–5 are implemented in-repo; target Supabase still needs RLS/migrations applied in each deployment environment.</p>
+  <table>
+    <thead><tr><th>Phase</th><th>Focus</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Security: auth, actor, validation, sanitization, RLS migration in repo</td></tr>
+      <tr><td>2</td><td>Providers: Perplexity, Ollama, dummy; routing metadata</td></tr>
+      <tr><td>3</td><td>Evidence-first BRD; validation and unsupported-claim handling</td></tr>
+      <tr><td>4</td><td>Controlled retrieval; sanitization; domain filter</td></tr>
+      <tr><td>5</td><td>Governance UI; optional DB audit columns; tests and CI</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="decisions">Resolved product decisions (summary)</h2>
+  <ul class="compact">
+    <li>Authentication: Supabase Auth + server actor resolution; no client <code>userId</code>.</li>
+    <li>Private provider default: Ollama; Perplexity cannot be configured as private provider.</li>
+    <li>Sensitive routing can fail closed (503) if private provider missing; <code>AI_EXTERNAL_DISABLED</code> optional.</li>
+  </ul>
+
+  <h2 id="deployment">Deployment and operations</h2>
+  <ol>
+    <li>Apply RLS and optional migrations in target Supabase (<code>docs/supabase-rls-rollout.md</code>).</li>
+    <li>Run checklists in that document.</li>
+    <li>Enable GitHub Actions for <code>npm run verify</code> on the remote repo.</li>
+  </ol>
+
+  <h2 id="verify">Verification checklist</h2>
+  <ol>
+    <li><code>npm run verify</code></li>
+    <li>Auth session and <code>/api/auth/actor</code></li>
+    <li>BRD generate (text + file); governance + retrieval panels</li>
+    <li>Private routing / Ollama when configured</li>
+    <li>Supabase persistence when migrations applied</li>
+  </ol>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <table>
+    <thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead>
+    <tbody>
+      <tr><td>Supabase auth unreachable (server)</td><td>Server cannot reach Supabase to validate JWT; check URL/key and network from the machine running Next.js.</td></tr>
+      <tr><td>AI provider / fetch failed</td><td>Perplexity key or network; or Ollama not listening on <code>OLLAMA_BASE_URL</code>.</td></tr>
+      <tr><td>Controlled retrieval not used</td><td>See <a href="#external-retrieval">external retrieval</a> section.</td></tr>
+      <tr><td>Low score / fallback HTML</td><td>Validation replaced model output; improve input detail and ensure model uses exact <code>&lt;h2&gt;</code> section titles; see <code>lib/ai/brd-validator.ts</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <hr />
+  <p class="muted">Full history: <code>progress.md</code>. Architecture proposal: <code>docs/private-first-brd-architecture-proposal.md</code>.</p>
+  <p class="muted" style="margin-bottom:0"><strong>Working rule:</strong> Security and safety foundations come before expanding retrieval or model routing.</p>
+
+</body>
+</html>

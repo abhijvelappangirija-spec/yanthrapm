@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 
 import AiAuditSummary from '@/components/AiAuditSummary'
 import { fetchWithAuth } from '@/lib/auth/fetch-with-auth'
+import { formatClientApiErrorMessage } from '@/lib/format-client-api-error'
 import type { AiGenerationMetadata } from '@/lib/ai/types'
 import LoadingSpinner from './LoadingSpinner'
 
@@ -253,7 +254,7 @@ export default function SprintPlanner({
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate sprint plan')
+        throw new Error(formatClientApiErrorMessage(data, 'Failed to generate sprint plan'))
       }
 
       setSprintPlan(data)

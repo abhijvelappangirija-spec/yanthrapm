@@ -13,12 +13,12 @@ export const perplexityAiProvider: AiProvider = {
     return 'sonar-pro'
   },
 
-  async generateBRD(content) {
-    return generateBRDWithPerplexity(content)
+  async generateBRD(content, options) {
+    return generateBRDWithPerplexity(content, options?.retrievalPolicy)
   },
 
-  async generateBRDFromFile(fileContent) {
-    return generateBRDFromFile(fileContent)
+  async generateBRDFromFile(fileContent, options) {
+    return generateBRDFromFile(fileContent, options?.retrievalPolicy)
   },
 
   async generateSprintPlan(input) {
@@ -29,7 +29,8 @@ export const perplexityAiProvider: AiProvider = {
       input.capacityPerMember,
       input.sprintDuration,
       input.velocity,
-      input.resources
+      input.resources,
+      input.retrievalPolicy
     )
   },
 }

@@ -8,6 +8,7 @@ type AiAuditSummaryProps = {
     isExternal?: boolean | null
     routingReason?: string | null
     generatedAt?: string | null
+    promptPackageVersion?: string | null
   } | null | undefined
   title?: string
   compact?: boolean
@@ -42,7 +43,13 @@ export default function AiAuditSummary({
   title = 'AI Routing Details',
   compact = false,
 }: AiAuditSummaryProps) {
-  if (!ai?.provider && !ai?.model && !ai?.task && !ai?.routingReason) {
+  if (
+    !ai?.provider &&
+    !ai?.model &&
+    !ai?.task &&
+    !ai?.routingReason &&
+    !ai?.promptPackageVersion
+  ) {
     return null
   }
 
@@ -99,6 +106,12 @@ export default function AiAuditSummary({
           {generatedAt && (
             <p>
               <span className="font-medium text-slate-700">Generated:</span> {generatedAt}
+            </p>
+          )}
+          {ai.promptPackageVersion && (
+            <p>
+              <span className="font-medium text-slate-700">Prompt package:</span>{' '}
+              {ai.promptPackageVersion}
             </p>
           )}
         </div>

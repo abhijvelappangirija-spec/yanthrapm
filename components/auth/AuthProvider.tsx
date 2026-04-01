@@ -23,6 +23,8 @@ type AuthContextValue = {
   session: Session | null
   user: User | null
   actor: ActorInfo | null
+  /** Set when the browser has a session but `/api/auth/actor` failed (e.g. server cannot reach Supabase). */
+  serverAuthError: string | null
   isLoading: boolean
   isAuthenticated: boolean
   isUsingFallbackActor: boolean
@@ -34,33 +36,54 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
-async function fetchActor(accessToken?: string | null): Promise<ActorInfo | null> {
+async function fetchActor(accessToken?: string | null): Promise<{
+  actor: ActorInfo | null
+  serverAuthError: string | null
+}> {
   const headers = new Headers()
 
   if (accessToken) {
     headers.set('Authorization', `Bearer ${accessToken}`)
   }
 
-  const response = await fetch('/api/auth/actor', {
-    method: 'GET',
-    headers,
-    cache: 'no-store',
-  })
+  try {
+    const response = await fetch('/api/auth/actor', {
+      method: 'GET',
+      headers,
+      cache: 'no-store',
+    })
 
-  const payload = (await response.json().catch(() => null)) as
-    | { actor?: ActorInfo }
-    | null
+    const payload = (await response.json().catch(() => null)) as
+      | { actor?: ActorInfo; error?: string }
+      | null
 
-  if (!response.ok) {
-    return null
+    if (!response.ok) {
+      return {
+        actor: null,
+        serverAuthError:
+          typeof payload?.error === 'string' && payload.error.trim()
+            ? payload.error
+            : 'Could not verify session with the server.',
+      }
+    }
+
+    return {
+      actor: payload?.actor ?? null,
+      serverAuthError: null,
+    }
+  } catch {
+    return {
+      actor: null,
+      serverAuthError:
+        'Could not reach this app’s server to verify your session. Check that the dev server is running.',
+    }
   }
-
-  return payload?.actor || null
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [actor, setActor] = useState<ActorInfo | null>(null)
+  const [serverAuthError, setServerAuthError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const refreshActor = useCallback(async () => {
@@ -68,7 +91,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { session: currentSession },
     } = await supabase.auth.getSession()
 
-    setActor(await fetchActor(currentSession?.access_token))
+    const { actor: nextActor, serverAuthError: nextErr } = await fetchActor(
+      currentSession?.access_token
+    )
+    setActor(nextActor)
+    setServerAuthError(nextErr)
   }, [])
 
   useEffect(() => {
@@ -84,7 +111,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setSession(initialSession)
-      setActor(await fetchActor(initialSession?.access_token))
+      {
+        const { actor: nextActor, serverAuthError: nextErr } = await fetchActor(
+          initialSession?.access_token
+        )
+        setActor(nextActor)
+        setServerAuthError(nextErr)
+      }
 
       if (active) {
         setIsLoading(false)
@@ -101,7 +134,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setSession(nextSession)
-      setActor(await fetchActor(nextSession?.access_token))
+      {
+        const { actor: nextActor, serverAuthError: nextErr } = await fetchActor(
+          nextSession?.access_token
+        )
+        setActor(nextActor)
+        setServerAuthError(nextErr)
+      }
       setIsLoading(false)
     })
 
@@ -140,6 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (!error) {
       setSession(null)
+      setServerAuthError(null)
       await refreshActor()
     }
 
@@ -151,6 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       user: session?.user || null,
       actor,
+      serverAuthError,
       isLoading,
       isAuthenticated: Boolean(session?.user),
       isUsingFallbackActor: Boolean(actor && actor.source !== 'supabase-auth'),
@@ -159,7 +200,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       refreshActor,
     }),
-    [actor, isLoading, refreshActor, session, signInWithPassword, signOut, signUpWithPassword]
+    [
+      actor,
+      isLoading,
+      refreshActor,
+      serverAuthError,
+      session,
+      signInWithPassword,
+      signOut,
+      signUpWithPassword,
+    ]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -42,6 +42,13 @@ PERPLEXITY_API_KEY=your_perplexity_api_key
 # AI_PRIVATE_TASKS=brd,brd-from-file,sprint-plan
 # AI_EXTERNAL_DISABLED=true
 
+# Controlled external retrieval
+# Keep disabled unless approved-source retrieval is explicitly allowed.
+# AI_RETRIEVAL_ENABLED=false
+# AI_RETRIEVAL_ALLOW_RESTRICTED=false
+# AI_RETRIEVAL_APPROVED_DOMAINS=owasp.org,nist.gov,cisa.gov,ietf.org,developer.atlassian.com,supabase.com,docs.ollama.com
+# AI_RETRIEVAL_ALLOWED_USE_CASES=industry-standards,compliance-controls,technology-docs,integration-docs
+
 # Ollama (private/local inference)
 # OLLAMA_BASE_URL=http://127.0.0.1:11434
 # OLLAMA_MODEL=llama3.1:8b
@@ -211,6 +218,8 @@ BRD generation now works in two stages:
 
 The generated BRD is then checked for required sections and evidence coverage. If the model output is structurally weak, the app falls back to a deterministic BRD rendered directly from the extracted evidence.
 
+The validator also checks for unsupported section claims. If the generated BRD introduces claims or measurable targets that are not grounded in the extracted evidence, the app falls back to the deterministic evidence-rendered BRD instead of storing speculative output.
+
 This reduces hallucination and makes the final BRD more reviewable for technical managers and architects.
 
 ### Provider Routing
@@ -218,6 +227,16 @@ This reduces hallucination and makes the final BRD more reviewable for technical
 The app now routes generation through a provider abstraction layer:
 
 1. `lib/ai/service.ts` selects the provider through policy.
+
+### Controlled Retrieval Guardrails
+
+The retrieval control layer now exists even though external freshness lookup is still disabled by default.
+
+- `lib/ai/retrieval-policy.ts` defines whether retrieval is allowed for each task and sensitivity level.
+- `lib/ai/retrieval-sanitization.ts` enforces outbound query sanitization and blocks sensitive patterns before a query can leave the system.
+- BRD and sprint-generation APIs now return the active retrieval policy so the client and reviewers can see whether external freshness lookup is allowed.
+
+This keeps retrieval policy separate from the private-generation path and prevents ad hoc external lookups from being introduced silently.
 2. `lib/ai/provider-policy.ts` enforces provider selection and external-provider restrictions.
 3. Supported providers currently are:
    - `perplexity`

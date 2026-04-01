@@ -14,7 +14,15 @@ export default function RequireAppAccess({
 }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { actor, isAuthenticated, isLoading, isUsingFallbackActor, signOut, user } = useAuth()
+  const {
+    actor,
+    isAuthenticated,
+    isLoading,
+    isUsingFallbackActor,
+    signOut,
+    user,
+    serverAuthError,
+  } = useAuth()
   const [isSigningOut, setIsSigningOut] = useState(false)
   const hasAccess = isAuthenticated || Boolean(actor)
 
@@ -106,6 +114,21 @@ export default function RequireAppAccess({
             </Link>
             {' '}
             to validate the real session path.
+          </div>
+        </div>
+      )}
+      {isAuthenticated && serverAuthError && (
+        <div className="border-b border-rose-200 bg-rose-50 text-rose-950">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 text-sm">
+            <p className="font-medium">Server could not finish Supabase sign-in checks</p>
+            <p className="mt-1 text-rose-900/90">
+              Your browser still shows you as signed in, but this app’s API must reach Supabase to
+              validate your session. That step failed: {serverAuthError} Typical causes: VPN or
+              firewall blocking the machine running Next.js, a paused Supabase project, wrong{' '}
+              <code className="rounded bg-rose-100/80 px-1">NEXT_PUBLIC_SUPABASE_URL</code> in{' '}
+              <code className="rounded bg-rose-100/80 px-1">.env.local</code>, or TLS/proxy issues on
+              the server. After fixing, refresh the page or sign out and sign in again.
+            </p>
           </div>
         </div>
       )}

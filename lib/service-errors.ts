@@ -57,6 +57,19 @@ export function isConnectivityError(error: unknown): boolean {
   ].some((pattern) => text.includes(pattern))
 }
 
+/** Appends the underlying message in non-production builds to debug connectivity failures. */
+export function getOptionalDevErrorCause(error: unknown): string | undefined {
+  if (process.env.NODE_ENV === 'production') {
+    return undefined
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+
+  return undefined
+}
+
 export function getPublicServiceErrorMessage(serviceName: string, error: unknown): string {
   const text = getServiceErrorText(error)
 

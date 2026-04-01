@@ -3,6 +3,8 @@ import {
   buildBRDEvidenceExtractionPrompt,
   buildSprintPlanPromptInput,
 } from '@/lib/ai/task-prompts'
+import { buildBrdGovernancePayload } from '@/lib/ai/brd-governance'
+import { emptyRetrievalExecutionMeta } from '@/lib/ai/brd-retrieval'
 import {
   parseBrdEvidenceResponse,
 } from '@/lib/ai/brd-evidence'
@@ -43,20 +45,31 @@ async function callOllamaChat(input: {
   messages: Array<{ role: 'system' | 'user'; content: string }>
   temperature?: number
 }): Promise<string> {
-  const response = await fetch(`${getOllamaBaseUrl()}/api/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: input.model,
-      stream: false,
-      messages: input.messages,
-      options: {
-        temperature: input.temperature ?? 0.2,
+  const base = getOllamaBaseUrl()
+  const url = `${base}/api/chat`
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-    }),
-  })
+      body: JSON.stringify({
+        model: input.model,
+        stream: false,
+        messages: input.messages,
+        options: {
+          temperature: input.temperature ?? 0.2,
+        },
+      }),
+    })
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    throw new Error(
+      `Cannot reach Ollama at ${url} (${detail}). Start the daemon (e.g. run the Ollama app or \`ollama serve\`), ensure the model is pulled (\`ollama pull ${input.model}\`), and check OLLAMA_BASE_URL in .env.local.`
+    )
+  }
 
   if (!response.ok) {
     const errorText = await response.text()
@@ -106,7 +119,12 @@ export const ollamaAiProvider: AiProvider = {
       temperature: 0.2,
     })
 
-    return finalizeBrdHtml(composedHtml, evidence).html
+    const finalized = finalizeBrdHtml(composedHtml, evidence)
+    return {
+      content: finalized.html,
+      retrievalExecution: emptyRetrievalExecutionMeta(),
+      governance: buildBrdGovernancePayload(evidence, finalized.validation),
+    }
   },
 
   async generateBRDFromFile(fileContent) {
@@ -134,7 +152,12 @@ export const ollamaAiProvider: AiProvider = {
       temperature: 0.2,
     })
 
-    return finalizeBrdHtml(composedHtml, evidence).html
+    const finalized = finalizeBrdHtml(composedHtml, evidence)
+    return {
+      content: finalized.html,
+      retrievalExecution: emptyRetrievalExecutionMeta(),
+      governance: buildBrdGovernancePayload(evidence, finalized.validation),
+    }
   },
 
   async generateSprintPlan(input) {

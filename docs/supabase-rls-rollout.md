@@ -17,6 +17,11 @@ The app now scopes records in API routes, but application logic alone is not eno
 1. `supabase/migrations/202603240001_phase1_rls.sql`
 2. `docs/supabase-rls-rollout.md`
 
+Optional follow-up migrations (AI audit and BRD governance snapshots):
+
+1. `supabase/migrations/202603240002_phase2_ai_metadata.sql`
+2. `supabase/migrations/202603260001_brds_governance_audit.sql` — adds `ai_prompt_package_version`, `brd_governance`, and `brd_retrieval_execution` on `brds`. The app retries inserts and list reads without these columns if they are not applied yet.
+
 ## What the migration does
 
 1. Creates an `is_current_user(target_user_id text)` helper using `auth.uid()`.
